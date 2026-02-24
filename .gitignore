@@ -1,0 +1,76 @@
+# Build directories
+build/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# CMake files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.sln.docstates
+*.userosscache
+*.sln.cache
+
+# Compiled files
+*.o
+*.obj
+*.exe
+*.dll
+*.lib
+*.a
+*.so
+*.dylib
+*.dll.a
+*.exe~
+
+# Debug files
+*.ilk
+*.pdb
+*.idb
+*.pch
+*.ipdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.ncb
+*.opendb
+*.opensdf
+*.log
+*.tlog
+
+# JUCE generated files
+JuceLibraryCode/
+BinaryData/
+
+# Platform specific
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.vs/
+.idea/
+*.sublime-*
+*.swp
+*.swo
+.metadata
+.repl_history
+
+# Sample folders (user downloads)
+Dirt-Samples-master/
+Dirt-Samples/
+samples/
+*.wav
+*.mp3
+*.aiff
+*.flac
