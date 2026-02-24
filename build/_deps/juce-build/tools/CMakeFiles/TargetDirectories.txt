@@ -1,0 +1,7 @@
+C:/Users/KroeteDE/Desktop/1000ter Versuch/build/_deps/juce-build/tools/CMakeFiles/INSTALL.dir
+C:/Users/KroeteDE/Desktop/1000ter Versuch/build/_deps/juce-build/tools/CMakeFiles/ALL_BUILD.dir
+C:/Users/KroeteDE/Desktop/1000ter Versuch/build/_deps/juce-build/tools/CMakeFiles/ZERO_CHECK.dir
+C:/Users/KroeteDE/Desktop/1000ter Versuch/build/_deps/juce-build/tools/modules/CMakeFiles/INSTALL.dir
+C:/Users/KroeteDE/Desktop/1000ter Versuch/build/_deps/juce-build/tools/extras/Build/CMakeFiles/INSTALL.dir
+C:/Users/KroeteDE/Desktop/1000ter Versuch/build/_deps/juce-build/tools/extras/Build/juceaide/CMakeFiles/juceaide.dir
+C:/Users/KroeteDE/Desktop/1000ter Versuch/build/_deps/juce-build/tools/extras/Build/juceaide/CMakeFiles/INSTALL.dir

@@ -1,0 +1,3 @@
+C:/Users/KroeteDE/Desktop/1000ter Versuch/build/_deps/juce-subbuild/CMakeFiles/juce-populate.dir
+C:/Users/KroeteDE/Desktop/1000ter Versuch/build/_deps/juce-subbuild/CMakeFiles/ALL_BUILD.dir
+C:/Users/KroeteDE/Desktop/1000ter Versuch/build/_deps/juce-subbuild/CMakeFiles/ZERO_CHECK.dir

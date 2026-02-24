@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\KroeteDE\Desktop\1000ter Versuch\build\_deps\juce-build\tools\CMakeFiles\d18e3a8fc958cf304e74af9c48fdbe2b\INSTALL_force.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{B91ACDD5-37AC-377D-B4B0-791043169745}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

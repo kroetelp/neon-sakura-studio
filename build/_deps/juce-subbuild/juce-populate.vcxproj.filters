@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\KroeteDE\Desktop\1000ter Versuch\build\_deps\juce-subbuild\CMakeFiles\229a5e706a6e484b35252eee5e18f163\juce-populate-mkdir.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\KroeteDE\Desktop\1000ter Versuch\build\_deps\juce-subbuild\CMakeFiles\229a5e706a6e484b35252eee5e18f163\juce-populate-download.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\KroeteDE\Desktop\1000ter Versuch\build\_deps\juce-subbuild\CMakeFiles\229a5e706a6e484b35252eee5e18f163\juce-populate-update.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\KroeteDE\Desktop\1000ter Versuch\build\_deps\juce-subbuild\CMakeFiles\229a5e706a6e484b35252eee5e18f163\juce-populate-patch.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\KroeteDE\Desktop\1000ter Versuch\build\_deps\juce-subbuild\CMakeFiles\229a5e706a6e484b35252eee5e18f163\juce-populate-configure.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\KroeteDE\Desktop\1000ter Versuch\build\_deps\juce-subbuild\CMakeFiles\229a5e706a6e484b35252eee5e18f163\juce-populate-build.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\KroeteDE\Desktop\1000ter Versuch\build\_deps\juce-subbuild\CMakeFiles\229a5e706a6e484b35252eee5e18f163\juce-populate-install.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\KroeteDE\Desktop\1000ter Versuch\build\_deps\juce-subbuild\CMakeFiles\229a5e706a6e484b35252eee5e18f163\juce-populate-test.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\KroeteDE\Desktop\1000ter Versuch\build\_deps\juce-subbuild\CMakeFiles\40566037d5cd7af6c841fdde41523ad3\juce-populate-complete.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\KroeteDE\Desktop\1000ter Versuch\build\_deps\juce-subbuild\CMakeFiles\4ae9ff569b7ac7c4b238b65ba27c0a47\juce-populate.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\KroeteDE\Desktop\1000ter Versuch\build\_deps\juce-subbuild\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="C:\Users\KroeteDE\Desktop\1000ter Versuch\build\_deps\juce-subbuild\CMakeFiles\juce-populate" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{1B4B7C7D-2329-35C0-BBF4-B30D2D8F1565}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

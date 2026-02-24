@@ -1,0 +1,22 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\KroeteDE\Desktop\1000ter Versuch\build\CMakeFiles\02b6b46b4a3265ad22b0217d4254b214\NeonSakuraStudio_resources.rc.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\KroeteDE\Desktop\1000ter Versuch\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="C:\Users\KroeteDE\Desktop\1000ter Versuch\build\NeonSakuraStudio_artefacts\JuceLibraryCode\NeonSakuraStudio_resources.rc">
+      <Filter>Source Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{557F838D-B3E7-3670-9A2F-08ED88DAD807}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{C7D85555-1A03-3C97-B9C2-8D7638600125}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
