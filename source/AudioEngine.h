@@ -8,6 +8,8 @@
 #include <array>
 #include <memory>
 #include <atomic>
+#include <random>
+#include "WavetableSynth/WavetableEngine.h"
 
 class TrackComponent;
 struct StepModifierState;
@@ -48,6 +50,10 @@ public:
     uint64_t getSamplePosition() const { return samplePosition.load(); }
     int getSamplesPerStep() const { return samplesPerStep.load(); }
 
+    // Wavetable Synth access
+    WavetableEngine& getWavetableEngine() { return wavetableEngine; }
+    const WavetableEngine& getWavetableEngine() const { return wavetableEngine; }
+
 private:
     // Dependencies
     std::array<std::unique_ptr<TrackComponent>, numTracks>& tracks;
@@ -65,15 +71,30 @@ private:
     // Audio-thread only variables
     double currentSampleRate = 44100.0;
     int globalLoopCounter = 0;
+    uint64_t lastGlobalLoopCheck = 0;  // Track loop cycles for global loop counter
     std::array<int, numTracks> trackLastStep = {-1, -1, -1, -1, -1, -1, -1, -1};
     std::array<int, numTracks> trackLastRatchet = {-1, -1, -1, -1, -1, -1, -1, -1};
+
+    // RNG for probability modifier (seeded for reproducibility)
+    std::mt19937 probabilityRng{42};  // Fixed seed for reproducibility
 
     // Buffers
     std::array<std::unique_ptr<juce::AudioBuffer<float>>, numTracks> trackBuffers;
 
+    // Pre-allocated modulation filters (avoid allocation in audio thread)
+    using FilterProcessor = juce::dsp::ProcessorDuplicator<
+        juce::dsp::IIR::Filter<float>,
+        juce::dsp::IIR::Coefficients<float>>;
+    std::array<std::unique_ptr<FilterProcessor>, numTracks> modulationFilters;
+
     // Effects
     juce::Reverb masterReverb;
     juce::Reverb::Parameters reverbParams;
+
+    // Wavetable Synth
+    WavetableEngine wavetableEngine;
+    std::unique_ptr<juce::AudioBuffer<float>> wavetableBuffer;
+    juce::MidiBuffer wavetableMidiBuffer;
 
     // Helper Methods
     void calculateSamplesPerStep();

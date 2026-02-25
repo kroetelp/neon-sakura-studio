@@ -1,5 +1,7 @@
 #include "TrackAudioProcessor.h"
 #include "TrackModel.h"
+#include "WavetableSynth/WavetableSynth.h"
+#include "WavetableSynth/WavetableParams.h"
 
 TrackAudioProcessor::TrackAudioProcessor(juce::AudioFormatManager& formatManager_, TrackModel& model_)
     : formatManager(formatManager_), model(model_)
@@ -7,6 +9,9 @@ TrackAudioProcessor::TrackAudioProcessor(juce::AudioFormatManager& formatManager
     // Add more sampler voices to prevent voice stealing during rapid triggers
     for (int i = 0; i < 8; ++i)
         synth.addVoice(new CustomSamplerVoice());
+
+    // Create wavetable synth for this track
+    wavetableSynth = std::make_unique<WavetableSynth>();
 }
 
 TrackAudioProcessor::~TrackAudioProcessor()
@@ -29,6 +34,16 @@ void TrackAudioProcessor::prepareAudio(double sampleRate, int samplesPerBlock)
 
     // Store sample rate for filter coefficient updates
     currentSampleRate = sampleRate;
+
+    // Prepare sampler synth
+    synth.setCurrentPlaybackSampleRate(sampleRate);
+
+    // Prepare wavetable synth
+    if (wavetableSynth)
+    {
+        wavetableSynth->setCurrentPlaybackSampleRate(sampleRate);
+        wavetableSynth->setSampleRate(sampleRate);
+    }
 }
 
 void TrackAudioProcessor::processAudioBlock(juce::AudioBuffer<float>& buffer)
@@ -121,4 +136,51 @@ void TrackAudioProcessor::updateDecayEnvelope()
     // Note: In JUCE 8, SamplerSound doesn't have a direct setADSR method
     // The ADSR is set at creation time, so we store values for future sample loads
     // Values will be applied when next sample is loaded
+}
+
+void TrackAudioProcessor::setTrackType(TrackType type)
+{
+    currentTrackType = type;
+    model.setTrackType(type);
+}
+
+TrackType TrackAudioProcessor::getTrackType() const
+{
+    return model.getTrackType();
+}
+
+void TrackAudioProcessor::processSynthAudio(juce::AudioBuffer<float>& buffer)
+{
+    // Process wavetable synth audio with its own filter settings
+    if (wavetableSynth)
+    {
+        // Apply the synth's internal filter (from voice params)
+        auto& params = wavetableSynth->getParams();
+        float synthCutoff = params.filterCutoff.load();
+        float synthResonance = params.filterResonance.load();
+
+        // Create and apply filter based on synth settings
+        auto filterCoeffs = juce::dsp::IIR::Coefficients<float>::makeLowPass(
+            currentSampleRate, synthCutoff, synthResonance);
+
+        juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>,
+            juce::dsp::IIR::Coefficients<float>> synthFilter;
+        *synthFilter.state = *filterCoeffs;
+
+        auto spec = juce::dsp::ProcessSpec();
+        spec.sampleRate = currentSampleRate;
+        spec.maximumBlockSize = static_cast<juce::uint32>(buffer.getNumSamples());
+        spec.numChannels = 2;
+        synthFilter.prepare(spec);
+
+        juce::dsp::AudioBlock<float> block(buffer);
+        synthFilter.process(juce::dsp::ProcessContextReplacing<float>(block));
+    }
+}
+
+std::shared_ptr<WavetableParams> TrackAudioProcessor::getWavetableParams() const
+{
+    if (wavetableSynth)
+        return wavetableSynth->getSharedParams();
+    return nullptr;
 }

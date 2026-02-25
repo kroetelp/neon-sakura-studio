@@ -16,6 +16,7 @@
 #include "AudioEngine.h"
 #include "RhythmExplorer.h"
 #include "MelodyPanel.h"
+#include "WavetableUI/WavetableSynthEditor.h"
 
 class MainComponent : public juce::AudioAppComponent,
                        public juce::Timer
@@ -70,6 +71,17 @@ private:
     bool melodyPanelVisible = false;
     juce::TextButton melodyWorkstationButton;  // Toggle for MelodyPanel
 
+    // Wavetable Synth (separate window)
+    std::unique_ptr<WavetableSynthEditor> wavetableSynthEditor;
+    std::unique_ptr<juce::DocumentWindow> wavetableSynthWindow;
+    bool wavetableSynthVisible = false;
+    juce::TextButton wavetableSynthButton;
+
+    // Track Wavetable Editor (for editing track synth params)
+    std::unique_ptr<WavetableSynthEditor> trackWavetableEditor;
+    std::unique_ptr<juce::DocumentWindow> trackWavetableWindow;
+    int currentEditingTrack = -1;
+
     // Track components
     std::array<std::unique_ptr<TrackComponent>, numTracks> tracks;
 
@@ -102,6 +114,7 @@ private:
     // Colors
     juce::Colour getNeonPink() const { return juce::Colour(255, 20, 147); }
     juce::Colour getNeonCyan() const { return juce::Colour(0, 255, 255); }
+    juce::Colour getNeonPurple() const { return juce::Colour(180, 0, 255); }
     juce::Colour getDarkBackground() const { return juce::Colour(15, 15, 25); }
     juce::Colour getStepInactive() const { return juce::Colour(30, 30, 45); }
 
@@ -114,6 +127,7 @@ private:
     void scanSampleDirectory(const juce::File& directory);
     void loadPendingSamples();
     void showAudioSettingsDialog();  // Opens audio device selection dialog
+    void openTrackWavetableEditor(int trackIndex, std::shared_ptr<WavetableParams> params);
 
     // Pattern generator
     std::unique_ptr<PatternGenerator> patternGenerator;

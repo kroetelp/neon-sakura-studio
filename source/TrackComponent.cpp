@@ -1,4 +1,15 @@
 #include "TrackComponent.h"
+#include "WavetableSynth/WavetableSynth.h"
+#include "WavetableSynth/WavetableParams.h"
+#include <fstream>
+
+// Simple file logging for debugging
+static void logToFile(const juce::String& message)
+{
+    static juce::File logFile = juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
+        .getChildFile("NeonSakuraDebug.txt");
+    logFile.appendText(juce::Time::getCurrentTime().formatted("%H:%M:%S") + " - " + message + "\n");
+}
 
 // StepButton neon glow rendering
 void StepButton::paintButton(juce::Graphics& g, bool, bool)
@@ -107,6 +118,33 @@ TrackComponent::TrackComponent(int trackIndex_, juce::AudioFormatManager& format
         clearAllSteps();
     };
 
+    // Wavetable modulator button
+    addAndMakeVisible(wavetableModulatorButton);
+    wavetableModulatorButton.setButtonText("WT");
+    wavetableModulatorButton.setClickingTogglesState(true);
+    wavetableModulatorButton.setColour(juce::TextButton::buttonColourId, getDarkBackground());
+    wavetableModulatorButton.setColour(juce::TextButton::buttonOnColourId, getNeonPink());
+    wavetableModulatorButton.setColour(juce::TextButton::textColourOffId, getNeonPink().withAlpha(0.5f));
+    wavetableModulatorButton.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    wavetableModulatorButton.setTooltip("Enable Wavetable Synth modulation for this track");
+    wavetableModulatorButton.onClick = [this] {
+        wavetableModulationEnabled = wavetableModulatorButton.getToggleState();
+    };
+
+    // Wavetable editor button
+    addAndMakeVisible(wavetableEditorButton);
+    wavetableEditorButton.setButtonText("EDIT");
+    wavetableEditorButton.setColour(juce::TextButton::buttonColourId, getDarkBackground());
+    wavetableEditorButton.setColour(juce::TextButton::textColourOffId, getNeonPurple());
+    wavetableEditorButton.setColour(juce::TextButton::textColourOnId, getNeonPurple());
+    wavetableEditorButton.setTooltip("Open Wavetable Synth Editor for this track");
+    wavetableEditorButton.onClick = [this] {
+        if (onOpenWavetableEditor)
+        {
+            onOpenWavetableEditor(trackIndex, audioProcessor.getWavetableParams());
+        }
+    };
+
     // Loop Length slider for polyrhythms
     addAndMakeVisible(loopLengthSlider);
     loopLengthSlider.setRange(1.0, 64.0, 1.0);
@@ -125,6 +163,91 @@ TrackComponent::TrackComponent(int trackIndex_, juce::AudioFormatManager& format
     loopLengthLabel.setText("Steps", juce::dontSendNotification);
     loopLengthLabel.setColour(juce::Label::textColourId, juce::Colours::white);
     loopLengthLabel.setFont(juce::Font(10.0f));
+
+    // Track type selector
+    setupTrackTypeUI();
+
+    // Wavetable-specific controls (initially hidden)
+    addAndMakeVisible(oscLevelSlider);
+    oscLevelSlider.setRange(0.0, 1.0, 0.01);
+    oscLevelSlider.setValue(0.8);
+    oscLevelSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    oscLevelSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    oscLevelSlider.setColour(juce::Slider::thumbColourId, getNeonPink());
+    oscLevelSlider.setVisible(false);
+    oscLevelSlider.onValueChange = [this] {
+        if (auto params = audioProcessor.getWavetableParams())
+        {
+            float val = static_cast<float>(oscLevelSlider.getValue());
+            params->setOscLevel(0, val);
+            logToFile("Track " + juce::String(trackIndex) + " OSC Level set to: " + juce::String(val));
+        }
+        else
+        {
+            logToFile("Track " + juce::String(trackIndex) + " - NO WAVETABLE PARAMS!");
+        }
+    };
+
+    addAndMakeVisible(oscLevelLabel);
+    oscLevelLabel.setText("OSC", juce::dontSendNotification);
+    oscLevelLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    oscLevelLabel.setFont(juce::Font(10.0f));
+    oscLevelLabel.setVisible(false);
+
+    addAndMakeVisible(oscMorphSlider);
+    oscMorphSlider.setRange(0.0, 1.0, 0.01);
+    oscMorphSlider.setValue(0.0);
+    oscMorphSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    oscMorphSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    oscMorphSlider.setColour(juce::Slider::thumbColourId, getNeonCyan());
+    oscMorphSlider.setVisible(false);
+    oscMorphSlider.onValueChange = [this] {
+        if (auto params = audioProcessor.getWavetableParams())
+            params->setOscMorph(0, static_cast<float>(oscMorphSlider.getValue()));
+    };
+
+    addAndMakeVisible(oscMorphLabel);
+    oscMorphLabel.setText("Morph", juce::dontSendNotification);
+    oscMorphLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    oscMorphLabel.setFont(juce::Font(10.0f));
+    oscMorphLabel.setVisible(false);
+
+    addAndMakeVisible(cutoffSlider);
+    cutoffSlider.setRange(20.0, 20000.0, 1.0);
+    cutoffSlider.setValue(20000.0);
+    cutoffSlider.setSkewFactorFromMidPoint(1000.0);
+    cutoffSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    cutoffSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    cutoffSlider.setColour(juce::Slider::thumbColourId, getNeonPink());
+    cutoffSlider.setVisible(false);
+    cutoffSlider.onValueChange = [this] {
+        if (auto params = audioProcessor.getWavetableParams())
+            params->setFilterCutoff(static_cast<float>(cutoffSlider.getValue()));
+    };
+
+    addAndMakeVisible(cutoffLabel);
+    cutoffLabel.setText("Cut", juce::dontSendNotification);
+    cutoffLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    cutoffLabel.setFont(juce::Font(10.0f));
+    cutoffLabel.setVisible(false);
+
+    addAndMakeVisible(resonanceSlider);
+    resonanceSlider.setRange(0.0, 1.0, 0.01);
+    resonanceSlider.setValue(0.0);
+    resonanceSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    resonanceSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    resonanceSlider.setColour(juce::Slider::thumbColourId, getNeonCyan());
+    resonanceSlider.setVisible(false);
+    resonanceSlider.onValueChange = [this] {
+        if (auto params = audioProcessor.getWavetableParams())
+            params->setFilterResonance(static_cast<float>(resonanceSlider.getValue()));
+    };
+
+    addAndMakeVisible(resonanceLabel);
+    resonanceLabel.setText("Res", juce::dontSendNotification);
+    resonanceLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    resonanceLabel.setFont(juce::Font(10.0f));
+    resonanceLabel.setVisible(false);
 
     // Bank selector buttons
     const char bankNames[4] = {'A', 'B', 'C', 'D'};
@@ -491,12 +614,21 @@ void TrackComponent::resized()
     expandButton.setBounds(headerArea.removeFromLeft(25).reduced(2, 8));
     trackLabel.setBounds(headerArea.removeFromLeft(70));
 
-    // Mute/Solo/Clear buttons
-    const int controlBtnWidth = 22;
-    auto leftControls = headerArea.removeFromLeft(80);
-    muteButton.setBounds(leftControls.removeFromLeft(controlBtnWidth).reduced(1, 8));
-    soloButton.setBounds(leftControls.removeFromLeft(controlBtnWidth).reduced(1, 8));
-    clearButton.setBounds(leftControls.removeFromLeft(controlBtnWidth).reduced(1, 8));
+    // Mute/Solo/Clear/WT buttons - smaller
+    const int smallBtnWidth = 26;
+    auto leftControls = headerArea.removeFromLeft(115);
+    muteButton.setBounds(leftControls.removeFromLeft(smallBtnWidth).reduced(1, 8));
+    soloButton.setBounds(leftControls.removeFromLeft(smallBtnWidth).reduced(1, 8));
+    clearButton.setBounds(leftControls.removeFromLeft(smallBtnWidth).reduced(1, 8));
+    wavetableModulatorButton.setBounds(leftControls.removeFromLeft(smallBtnWidth).reduced(1, 8));
+
+    // EDIT button - wider for text
+    wavetableEditorButton.setBounds(leftControls.removeFromLeft(40).reduced(1, 8));
+
+    // Track type selector (between controls and loop)
+    auto typeArea = headerArea.removeFromLeft(100);
+    trackTypeLabel.setBounds(typeArea.removeFromLeft(30).reduced(0, 12));
+    trackTypeComboBox.setBounds(typeArea.removeFromLeft(70).reduced(0, 8));
 
     // Loop length slider
     auto loopArea = headerArea.removeFromLeft(100);
@@ -519,13 +651,13 @@ void TrackComponent::resized()
         bankButtons[i]->setBounds(bankArea.removeFromLeft(bankButtonSize).reduced(1, 5));
     }
 
-    // Sample selection buttons
+    // Sample selection buttons (sampler mode only)
     auto sampleControlsArea = rightArea;
     prevSampleButton.setBounds(sampleControlsArea.removeFromLeft(22).reduced(2, 8));
     sampleIndexLabel.setBounds(sampleControlsArea.removeFromLeft(55).reduced(3, 10));
     nextSampleButton.setBounds(sampleControlsArea.removeFromLeft(22).reduced(2, 8));
 
-    // Category dropdown
+    // Category dropdown (sampler mode) - takes remaining header space
     categoryComboBox.setBounds(headerArea.reduced(5, 5));
 
     // CRITICAL: If collapsed, stop here
@@ -535,18 +667,49 @@ void TrackComponent::resized()
         return;
     }
 
-    // Second row: control knobs
-    auto controlArea = area.removeFromTop(50);
-    const int knobSize = 38;
-    const int knobSpacing = 8;
-    const int totalKnobsWidth = (knobSize * 5) + (knobSpacing * 4);
-    auto knobRow = controlArea.withTrimmedLeft((controlArea.getWidth() - totalKnobsWidth) / 2).withWidth(totalKnobsWidth);
+    // Check current track type for control layout
+    const bool isWavetable = (model.getTrackType() == TrackType::Wavetable);
 
-    for (int i = 0; i < 5; ++i)
+    // Second row: control knobs (sampler) or synth controls (wavetable)
+    auto controlArea = area.removeFromTop(50);
+
+    if (isWavetable)
     {
-        controlSliders[i]->setBounds(knobRow.removeFromLeft(knobSize));
-        controlLabels[i]->setBounds(controlSliders[i]->getBounds().withTrimmedBottom(5).withTrimmedTop(23));
-        if (i < 4) knobRow.removeFromLeft(knobSpacing);
+        // Wavetable synth controls layout
+        const int knobSize = 38;
+        const int knobSpacing = 8;
+        const int totalKnobsWidth = (knobSize * 4) + (knobSpacing * 3);
+        auto knobRow = controlArea.withTrimmedLeft((controlArea.getWidth() - totalKnobsWidth) / 2).withWidth(totalKnobsWidth);
+
+        oscLevelSlider.setBounds(knobRow.removeFromLeft(knobSize));
+        oscLevelLabel.setBounds(oscLevelSlider.getBounds().withTrimmedBottom(5).withTrimmedTop(23));
+        knobRow.removeFromLeft(knobSpacing);
+
+        oscMorphSlider.setBounds(knobRow.removeFromLeft(knobSize));
+        oscMorphLabel.setBounds(oscMorphSlider.getBounds().withTrimmedBottom(5).withTrimmedTop(23));
+        knobRow.removeFromLeft(knobSpacing);
+
+        cutoffSlider.setBounds(knobRow.removeFromLeft(knobSize));
+        cutoffLabel.setBounds(cutoffSlider.getBounds().withTrimmedBottom(5).withTrimmedTop(23));
+        knobRow.removeFromLeft(knobSpacing);
+
+        resonanceSlider.setBounds(knobRow.removeFromLeft(knobSize));
+        resonanceLabel.setBounds(resonanceSlider.getBounds().withTrimmedBottom(5).withTrimmedTop(23));
+    }
+    else
+    {
+        // Sampler controls layout
+        const int knobSize = 38;
+        const int knobSpacing = 8;
+        const int totalKnobsWidth = (knobSize * 5) + (knobSpacing * 4);
+        auto knobRow = controlArea.withTrimmedLeft((controlArea.getWidth() - totalKnobsWidth) / 2).withWidth(totalKnobsWidth);
+
+        for (int i = 0; i < 5; ++i)
+        {
+            controlSliders[i]->setBounds(knobRow.removeFromLeft(knobSize));
+            controlLabels[i]->setBounds(controlSliders[i]->getBounds().withTrimmedBottom(5).withTrimmedTop(23));
+            if (i < 4) knobRow.removeFromLeft(knobSpacing);
+        }
     }
 
     // Step buttons - 2 rows of 32 steps
@@ -670,4 +833,70 @@ void TrackComponent::clearAllSteps()
 {
     model.clearAllSteps();
     refreshStepButtons();
+}
+
+void TrackComponent::setWavetableModulationEnabled(bool enabled)
+{
+    wavetableModulationEnabled = enabled;
+    wavetableModulatorButton.setToggleState(enabled, juce::dontSendNotification);
+}
+
+void TrackComponent::setTrackType(TrackType type)
+{
+    model.setTrackType(type);
+    audioProcessor.setTrackType(type);
+    trackTypeComboBox.setSelectedId(TrackTypeHelpers::trackTypeToIndex(type) + 1, juce::dontSendNotification);
+    updateControlsForTrackType(type);
+}
+
+void TrackComponent::setupTrackTypeUI()
+{
+    addAndMakeVisible(trackTypeLabel);
+    trackTypeLabel.setText("Type:", juce::dontSendNotification);
+    trackTypeLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    trackTypeLabel.setFont(juce::Font(10.0f));
+
+    addAndMakeVisible(trackTypeComboBox);
+    trackTypeComboBox.addItem("Sampler", 1);
+    trackTypeComboBox.addItem("Wavetable", 2);
+    trackTypeComboBox.setSelectedId(1, juce::dontSendNotification);
+    trackTypeComboBox.setColour(juce::ComboBox::backgroundColourId, getDarkBackground());
+    trackTypeComboBox.setColour(juce::ComboBox::textColourId, juce::Colours::white);
+    trackTypeComboBox.setColour(juce::ComboBox::outlineColourId, getNeonCyan());
+    trackTypeComboBox.onChange = [this] {
+        int selectedId = trackTypeComboBox.getSelectedId();
+        TrackType newType = TrackTypeHelpers::trackTypeFromIndex(selectedId - 1);
+        setTrackType(newType);
+    };
+}
+
+void TrackComponent::updateControlsForTrackType(TrackType type)
+{
+    const bool isSampler = (type == TrackType::Sampler);
+    const bool isWavetable = (type == TrackType::Wavetable);
+
+    // Sampler controls visibility
+    categoryComboBox.setVisible(isSampler);
+    prevSampleButton.setVisible(isSampler);
+    nextSampleButton.setVisible(isSampler);
+    sampleIndexLabel.setVisible(isSampler);
+
+    // Standard sampler controls visibility
+    for (int i = 0; i < 5; ++i)
+    {
+        controlSliders[i]->setVisible(isSampler);
+        controlLabels[i]->setVisible(isSampler);
+    }
+
+    // Wavetable-specific controls visibility
+    oscLevelSlider.setVisible(isWavetable);
+    oscLevelLabel.setVisible(isWavetable);
+    oscMorphSlider.setVisible(isWavetable);
+    oscMorphLabel.setVisible(isWavetable);
+    cutoffSlider.setVisible(isWavetable);
+    cutoffLabel.setVisible(isWavetable);
+    resonanceSlider.setVisible(isWavetable);
+    resonanceLabel.setVisible(isWavetable);
+
+    resized();
 }

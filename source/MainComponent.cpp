@@ -21,6 +21,11 @@ MainComponent::MainComponent()
 
         // Bind collapse callback to trigger resized()
         tracks[i]->onStateChange = [this] { resized(); };
+
+        // Bind wavetable editor callback
+        tracks[i]->onOpenWavetableEditor = [this](int trackIndex, std::shared_ptr<WavetableParams> params) {
+            openTrackWavetableEditor(trackIndex, params);
+        };
     }
 
     // Auto-detect sample directory on startup
@@ -314,6 +319,48 @@ MainComponent::MainComponent()
         }
     };
 
+    // Wavetable Synth toggle button (opens in separate window)
+    wavetableSynthButton.setButtonText("Wavetable Synth");
+    wavetableSynthButton.setColour(juce::TextButton::buttonColourId, juce::Colour(180, 0, 255).withAlpha(0.7f));
+    wavetableSynthButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    wavetableSynthButton.setClickingTogglesState(true);
+    addAndMakeVisible(wavetableSynthButton);
+    wavetableSynthButton.onClick = [this] {
+        wavetableSynthVisible = wavetableSynthButton.getToggleState();
+
+        if (wavetableSynthVisible)
+        {
+            if (!wavetableSynthEditor)
+            {
+                // Create editor with reference to AudioEngine's WavetableEngine
+                wavetableSynthEditor = std::make_unique<WavetableSynthEditor>(audioEngine->getWavetableEngine());
+            }
+
+            if (!wavetableSynthWindow)
+            {
+                wavetableSynthWindow = std::make_unique<juce::DocumentWindow>(
+                    "Wavetable Synth",
+                    getDarkBackground(),
+                    juce::DocumentWindow::allButtons,
+                    true
+                );
+                wavetableSynthWindow->setContentOwned(wavetableSynthEditor.get(), true);
+                wavetableSynthWindow->setCentrePosition(600, 400);
+                wavetableSynthWindow->setSize(1050, 750);
+            }
+
+            wavetableSynthWindow->setVisible(true);
+            wavetableSynthWindow->toFront(true);
+        }
+        else
+        {
+            if (wavetableSynthWindow)
+            {
+                wavetableSynthWindow->setVisible(false);
+            }
+        }
+    };
+
     // Start GUI timer for playhead updates (15 FPS - sufficient for visual feedback)
     startTimerHz(15);
 
@@ -488,6 +535,13 @@ void MainComponent::resized()
     if (xPos + 90 < area.getWidth())
     {
         melodyWorkstationButton.setBounds(xPos, bottomY, 90, btnHeight);
+    }
+
+    // Wavetable Synth toggle button
+    xPos += 95;
+    if (xPos + 110 < area.getWidth())
+    {
+        wavetableSynthButton.setBounds(xPos, bottomY, 110, btnHeight);
     }
 
     // === DYNAMIC TRACK HEIGHTS based on expanded state ===
@@ -698,4 +752,44 @@ void MainComponent::showAudioSettingsDialog()
     options.resizable = false;
 
     options.launchAsync();
+}
+
+void MainComponent::openTrackWavetableEditor(int trackIndex, std::shared_ptr<WavetableParams> params)
+{
+    if (!params)
+        return;
+
+    currentEditingTrack = trackIndex;
+
+    // Create or update the editor
+    if (!trackWavetableEditor)
+    {
+        trackWavetableEditor = std::make_unique<WavetableSynthEditor>(params);
+    }
+    else
+    {
+        trackWavetableEditor->setSharedParams(params);
+    }
+
+    // Create window if needed
+    if (!trackWavetableWindow)
+    {
+        trackWavetableWindow = std::make_unique<juce::DocumentWindow>(
+            "Track " + juce::String(trackIndex + 1) + " Wavetable",
+            getDarkBackground(),
+            juce::DocumentWindow::allButtons,
+            true
+        );
+        trackWavetableWindow->setContentOwned(trackWavetableEditor.get(), true);
+        trackWavetableWindow->setCentrePosition(650, 400);
+        trackWavetableWindow->setSize(1050, 750);
+    }
+    else
+    {
+        // Update window title for new track
+        trackWavetableWindow->setName("Track " + juce::String(trackIndex + 1) + " Wavetable");
+    }
+
+    trackWavetableWindow->setVisible(true);
+    trackWavetableWindow->toFront(true);
 }

@@ -6,8 +6,13 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <melatonin_blur.h>
 #include <functional>
+#include <memory>
 #include "TrackModel.h"
 #include "TrackAudioProcessor.h"
+#include "TrackType.h"
+
+class WavetableSynth;
+class WavetableParams;
 
 // Custom step button with right-click support for modifiers and neon glow
 class StepButton : public juce::TextButton
@@ -64,6 +69,7 @@ public:
 
     // UI -> AudioProcessor delegation
     juce::Synthesiser& getSynthesiser() { return audioProcessor.getSynthesiser(); }
+    WavetableSynth* getWavetableSynth() { return audioProcessor.getWavetableSynth(); }
     juce::ComboBox& getComboBox() { return categoryComboBox; }
     void loadSampleForCategory(const juce::String& category, const juce::File& sampleDirectory);
     void updatePlayhead(int currentStep, bool isPlaying);
@@ -84,8 +90,22 @@ public:
     void setSolo(bool solo);
     void clearAllSteps();
 
+    // Wavetable modulator control
+    bool getWavetableModulationEnabled() const { return wavetableModulationEnabled; }
+    void setWavetableModulationEnabled(bool enabled);
+
+    // Track type control
+    TrackType getTrackType() const { return model.getTrackType(); }
+    void setTrackType(TrackType type);
+
+    // Wavetable params access (for UI integration)
+    std::shared_ptr<WavetableParams> getWavetableParams() const { return audioProcessor.getWavetableParams(); }
+
     // Callback for collapse state changes
     std::function<void()> onStateChange;
+
+    // Callback to open wavetable editor (called when WT Edit button is clicked)
+    std::function<void(int trackIndex, std::shared_ptr<WavetableParams> params)> onOpenWavetableEditor;
 
     // Sample selection helpers
     void changeSampleIndex(int delta);
@@ -101,6 +121,10 @@ public:
     void updateBankButtonStyles();
     void updateStepButtonState(int globalStep, const StepModifierState& state);
 
+    // Track type handling
+    void setupTrackTypeUI();
+    void updateControlsForTrackType(TrackType type);
+
 private:
     int trackIndex;
 
@@ -112,15 +136,36 @@ private:
     juce::Label trackLabel;
     juce::ComboBox categoryComboBox;
 
+    // Track type selector
+    juce::ComboBox trackTypeComboBox;
+    juce::Label trackTypeLabel;
+
     // Sample selection controls
     juce::TextButton prevSampleButton;
     juce::TextButton nextSampleButton;
     juce::Label sampleIndexLabel;
 
+    // Wavetable-spezifische Controls (für Synth-Track)
+    juce::Slider oscLevelSlider;
+    juce::Slider oscMorphSlider;
+    juce::Slider cutoffSlider;
+    juce::Slider resonanceSlider;
+    juce::Label oscLevelLabel;
+    juce::Label oscMorphLabel;
+    juce::Label cutoffLabel;
+    juce::Label resonanceLabel;
+
     // Track controls (Mute, Solo, Clear)
     juce::TextButton muteButton;
     juce::TextButton soloButton;
     juce::TextButton clearButton;
+
+    // Wavetable modulator toggle
+    juce::TextButton wavetableModulatorButton;
+    bool wavetableModulationEnabled = false;
+
+    // Wavetable editor button
+    juce::TextButton wavetableEditorButton;
 
     // Bank selector buttons
     std::array<std::unique_ptr<juce::TextButton>, TrackModel::numBanks> bankButtons;
@@ -149,6 +194,7 @@ private:
     // Colors
     juce::Colour getNeonPink() const { return juce::Colour(255, 20, 147); }
     juce::Colour getNeonCyan() const { return juce::Colour(0, 255, 255); }
+    juce::Colour getNeonPurple() const { return juce::Colour(180, 0, 255); }
     juce::Colour getDarkBackground() const { return juce::Colour(15, 15, 25); }
     juce::Colour getStepInactive() const { return juce::Colour(30, 30, 45); }
 

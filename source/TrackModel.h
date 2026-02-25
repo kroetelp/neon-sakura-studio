@@ -2,6 +2,8 @@
 
 #include <juce_core/juce_core.h>
 #include <array>
+#include <atomic>
+#include "TrackType.h"
 
 // Step state struct supporting TidalCycles modifiers and P-Locks
 struct StepModifierState
@@ -81,11 +83,16 @@ public:
 
     int getTotalSteps() const { return totalSteps; }
 
+    // Track type management
+    void setTrackType(TrackType type) { trackType.store(type); }
+    TrackType getTrackType() const { return trackType.load(); }
+
 private:
     std::array<std::array<StepModifierState, stepsPerBank>, numBanks> bankSteps;
     int currentBank = 0;
     juce::Array<juce::File> currentSampleFiles;
     int currentSampleIndex = 0;
     std::atomic<int> trackLoopLength{16};
+    std::atomic<TrackType> trackType{TrackType::Sampler};
     bool isExpanded = true;
 };
