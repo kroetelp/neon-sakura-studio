@@ -42,7 +42,6 @@ void TrackAudioProcessor::prepareAudio(double sampleRate, int samplesPerBlock)
     if (wavetableSynth)
     {
         wavetableSynth->setCurrentPlaybackSampleRate(sampleRate);
-        wavetableSynth->setSampleRate(sampleRate);
     }
 }
 

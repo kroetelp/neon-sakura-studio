@@ -13,7 +13,6 @@ void WavetableEngine::prepareToPlay(int samplesPerBlock, double newSampleRate)
 {
     sampleRate = newSampleRate;
     synth.setCurrentPlaybackSampleRate(newSampleRate);
-    synth.setSampleRate(newSampleRate);
 }
 
 void WavetableEngine::releaseResources()

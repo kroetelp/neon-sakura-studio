@@ -3,6 +3,7 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <memory>
 #include <array>
+#include <atomic>
 #include "WavetableData.h"
 #include "WavetableVoice.h"
 #include "WavetableParams.h"
@@ -24,12 +25,6 @@ public:
 
 /**
  * WavetableSynth - JUCE Synthesiser wrapper for the wavetable engine
- *
- * Manages:
- * - Voice allocation
- * - Shared wavetable data
- * - Shared parameters (WavetableParams) for UI integration
- * - LFOs and Envelopes
  */
 class WavetableSynth : public juce::Synthesiser
 {
@@ -41,28 +36,31 @@ public:
     WavetableSynth();
     ~WavetableSynth() override = default;
 
-    // Setup
-    void setSampleRate(double sampleRate);
+    // Setup (Korrekt überschrieben für JUCE)
+    void setCurrentPlaybackSampleRate(double sampleRate) override;
+    
     void setWavetable(std::shared_ptr<WavetableData> wavetable);
     std::shared_ptr<WavetableData> getWavetable() const { return wavetableData; }
 
-    // Shared parameters (for UI integration)
+    // Shared parameters (for UI integration) - jetzt thread-safe
     void setSharedParams(std::shared_ptr<WavetableParams> params);
-    std::shared_ptr<WavetableParams> getSharedParams() const { return sharedParams; }
+    std::shared_ptr<WavetableParams> getSharedParams() const { return sharedParams.load(); }
 
     // Voice management
     void setNumVoices(int numVoices);
     int getNumVoicesActive() const { return getNumVoices(); }
 
-    // Legacy parameter access (deprecated - use sharedParams instead)
-    // These now read from sharedParams
+    // Überschrieben für Velocity-Tracking
+    void noteOn(int midiChannel, int midiNoteNumber, float velocity) override;
+
+    // Legacy parameter access
     WavetableVoice::VoiceParams& getParams() { return legacyParams; }
 
     // LFO access
     LFOModulator& getLFO(int index) { return lfos[index]; }
     const LFOModulator& getLFO(int index) const { return lfos[index]; }
 
-    // Envelope access (for modulation, not voice envelopes)
+    // Envelope access
     EnvelopeModulator& getEnvelope(int index) { return envelopes[index]; }
     const EnvelopeModulator& getEnvelope(int index) const { return envelopes[index]; }
 
@@ -70,48 +68,37 @@ public:
     ModulationMatrix& getModulationMatrix() { return modulationMatrix; }
     const ModulationMatrix& getModulationMatrix() const { return modulationMatrix; }
 
-    // Process modulations (call before rendering audio)
     void processModulations();
-
-    // Get current modulation value from any source
     float getModulatorValue(ModulationSource source) const;
 
-    // Macro controls (MIDI CC or UI assignable)
+    // Macro controls
     void setMacroValue(int macroIndex, float value);
     float getMacroValue(int macroIndex) const;
 
-    // MIDI learn / performance
+    // Performance
     void setModWheelValue(float value) { modWheelValue = value; }
     void setPitchBendValue(float value) { pitchBendValue = value; }
     void setAftertouchValue(float value) { aftertouchValue = value; }
 
 private:
-    // Shared wavetable
     std::shared_ptr<WavetableData> wavetableData;
 
-    // Shared parameters (thread-safe, shared with UI)
-    std::shared_ptr<WavetableParams> sharedParams;
+    // Thread-safe durch C++20 atomic shared_ptr
+    std::atomic<std::shared_ptr<WavetableParams>> sharedParams;
 
-    // Legacy params for backward compatibility
     WavetableVoice::VoiceParams legacyParams;
-
-    // LFOs (global, not per-voice)
     std::array<LFOModulator, numLFOs> lfos;
-
-    // Envelopes (global for modulation, voices have their own amp/filter envelopes)
     std::array<EnvelopeModulator, numEnvelopes> envelopes;
-
-    // Modulation matrix
     ModulationMatrix modulationMatrix;
 
-    // Macro controls
     std::array<float, 4> macroValues = { {0.0f, 0.0f, 0.0f, 0.0f} };
+    
+    // Für die Modulationsmatrix
+    std::atomic<float> lastVelocity { 0.8f }; 
 
-    // Performance controllers
     float modWheelValue = 0.0f;
     float pitchBendValue = 0.0f;
     float aftertouchValue = 0.0f;
-
     double currentSampleRate = 44100.0;
 
     void setupModulationMatrix();

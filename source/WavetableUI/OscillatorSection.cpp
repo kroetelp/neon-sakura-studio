@@ -135,6 +135,7 @@ void OscillatorSection::connectToSharedParams(std::shared_ptr<WavetableParams> p
 
 void OscillatorSection::updateFromParams(float level, float morph, float detune, int unison, float panSpread, float pan, float pitch)
 {
+    // dontSendNotification verhindert eine Endlosschleife (UI ändert Slider -> Slider ruft onValueChange auf -> UI ändert Slider...)
     levelSlider.setValue(level, juce::dontSendNotification);
     morphSlider.setValue(morph, juce::dontSendNotification);
     detuneSlider.setValue(detune, juce::dontSendNotification);

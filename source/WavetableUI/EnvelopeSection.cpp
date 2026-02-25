@@ -70,7 +70,7 @@ EnvelopeSection::EnvelopeSection()
     releaseLabel.setFont(juce::Font(10.0f, juce::Font::bold));
     releaseLabel.setJustificationType(juce::Justification::centred);
 
-    // Update path when values change
+    // Update path when values change (This is the fallback, but mostly the connect-methods take over)
     auto updatePath = [this] {
         attackValue = static_cast<float>(attackSlider.getValue());
         decayValue = static_cast<float>(decaySlider.getValue());
@@ -116,24 +116,28 @@ void EnvelopeSection::connectToParams(WavetableVoice::VoiceParams& params)
         params.envAttack.store(static_cast<float>(attackSlider.getValue()));
         attackValue = static_cast<float>(attackSlider.getValue());
         updateEnvelopePath();
+        repaint(); // <--- Hier fehlte das repaint()!
     };
 
     decaySlider.onValueChange = [&params, this] {
         params.envDecay.store(static_cast<float>(decaySlider.getValue()));
         decayValue = static_cast<float>(decaySlider.getValue());
         updateEnvelopePath();
+        repaint(); // <--- Hier fehlte das repaint()!
     };
 
     sustainSlider.onValueChange = [&params, this] {
         params.envSustain.store(static_cast<float>(sustainSlider.getValue()));
         sustainValue = static_cast<float>(sustainSlider.getValue());
         updateEnvelopePath();
+        repaint(); // <--- Hier fehlte das repaint()!
     };
 
     releaseSlider.onValueChange = [&params, this] {
         params.envRelease.store(static_cast<float>(releaseSlider.getValue()));
         releaseValue = static_cast<float>(releaseSlider.getValue());
         updateEnvelopePath();
+        repaint(); // <--- Hier fehlte das repaint()!
     };
 }
 
@@ -146,24 +150,28 @@ void EnvelopeSection::connectToSharedParams(std::shared_ptr<WavetableParams> par
         params->setEnvAttack(static_cast<float>(attackSlider.getValue()));
         attackValue = static_cast<float>(attackSlider.getValue());
         updateEnvelopePath();
+        repaint(); // <--- Hier fehlte das repaint()!
     };
 
     decaySlider.onValueChange = [params, this] {
         params->setEnvDecay(static_cast<float>(decaySlider.getValue()));
         decayValue = static_cast<float>(decaySlider.getValue());
         updateEnvelopePath();
+        repaint(); // <--- Hier fehlte das repaint()!
     };
 
     sustainSlider.onValueChange = [params, this] {
         params->setEnvSustain(static_cast<float>(sustainSlider.getValue()));
         sustainValue = static_cast<float>(sustainSlider.getValue());
         updateEnvelopePath();
+        repaint(); // <--- Hier fehlte das repaint()!
     };
 
     releaseSlider.onValueChange = [params, this] {
         params->setEnvRelease(static_cast<float>(releaseSlider.getValue()));
         releaseValue = static_cast<float>(releaseSlider.getValue());
         updateEnvelopePath();
+        repaint(); // <--- Hier fehlte das repaint()!
     };
 }
 
