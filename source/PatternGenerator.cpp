@@ -1,22 +1,24 @@
 #include "PatternGenerator.h"
+#include "TrackManager.h"
+#include "ISampleProvider.h"
 #include "TrackComponent.h"
 #include <chrono>
 
 PatternGenerator::PatternGenerator(
-    std::array<std::unique_ptr<TrackComponent>, 8>& tracksRef,
-    const juce::StringArray& categoriesRef,
-    const juce::File& directoryRef,
-    std::atomic<double>& bpmRef,
-    juce::Slider& bpmSliderRef,
-    std::function<void()> onBpmChangedCallback
+    TrackManager& tracks,
+    ISampleProvider& samples,
+    std::function<void(double)> bpmCallback
 )
-    : tracks(tracksRef)
-    , sampleCategories(categoriesRef)
-    , sampleDirectory(directoryRef)
-    , bpm(bpmRef)
-    , bpmSlider(bpmSliderRef)
-    , onBpmChanged(std::move(onBpmChangedCallback))
+    : trackManager(tracks)
+    , sampleProvider(samples)
+    , onBpmChanged(std::move(bpmCallback))
 {
+}
+
+void PatternGenerator::setBPM(double newBpm)
+{
+    if (onBpmChanged)
+        onBpmChanged(newBpm);
 }
 
 // Helper function to check if category is available and load it
@@ -24,12 +26,13 @@ bool PatternGenerator::setTrackCategoryIfAvailable(int trackIdx, const juce::Str
 {
     if (trackIdx >= numTracks) return false;
 
-    for (const auto& cat : sampleCategories)
+    juce::StringArray categories = sampleProvider.getSampleCategories();
+    for (const auto& cat : categories)
     {
         if (cat == category)
         {
-            tracks[trackIdx]->setSelectedCategory(category);
-            tracks[trackIdx]->loadSampleForCategory(category, sampleDirectory);
+            trackManager.getTrack(trackIdx).setSelectedCategory(category);
+            sampleProvider.loadSampleForCategory(trackIdx, category);
             return true;
         }
     }
@@ -44,7 +47,7 @@ void PatternGenerator::setStepsOnTrack(int trackIdx, const std::vector<int>& ste
     for (int step : steps)
     {
         if (step >= 0 && step < totalSteps)
-            tracks[trackIdx]->setStepActive(step, true);
+            trackManager.getTrack(trackIdx).setStepActive(step, true);
     }
 }
 
@@ -52,7 +55,7 @@ void PatternGenerator::setStepsOnTrack(int trackIdx, const std::vector<int>& ste
 void PatternGenerator::setStepModifier(int trackIdx, int step, char type, int value)
 {
     if (trackIdx >= numTracks) return;
-    tracks[trackIdx]->setStepModifier(step, type, value);
+    trackManager.getTrack(trackIdx).setStepModifier(step, type, value);
 }
 
 // Euclidean rhythm generator - creates evenly distributed patterns
@@ -76,13 +79,13 @@ void PatternGenerator::clearTrackFully(int trackIdx)
 
     for (int step = 0; step < totalSteps; ++step)
     {
-        StepModifierState state = tracks[trackIdx]->getStepState(step);
+        StepModifierState state = trackManager.getTrack(trackIdx).getStepState(step);
         state.active = false;
         state.modifierType = ' ';
         state.modifierValue = 1;
         state.hasPitchLock = false;
         state.hasVolLock = false;
-        tracks[trackIdx]->setStepState(step, state);
+        trackManager.getTrack(trackIdx).setStepState(step, state);
     }
 }
 
@@ -91,8 +94,8 @@ void PatternGenerator::clearAllTracks()
     for (int trackIdx = 0; trackIdx < numTracks; ++trackIdx)
     {
         clearTrackFully(trackIdx);
-        tracks[trackIdx]->setMuted(false);
-        tracks[trackIdx]->setSolo(false);
+        trackManager.getTrack(trackIdx).setMuted(false);
+        trackManager.getTrack(trackIdx).setSolo(false);
     }
 }
 
@@ -129,10 +132,6 @@ void PatternGenerator::generateSong(Genre genre)
             generateIdmGlitch(rng);
             break;
     }
-
-    // Notify that BPM changed (triggers recalculation)
-    if (onBpmChanged)
-        onBpmChanged();
 }
 
 void PatternGenerator::generateTechno(std::mt19937& rng)
@@ -145,8 +144,7 @@ void PatternGenerator::generateTechno(std::mt19937& rng)
     std::uniform_int_distribution<int> offsetDist(0, 15);
 
     int bpmVal = 128 + mediumDist(rng) * 4;  // 128-140 BPM
-    bpm.store(bpmVal);
-    bpmSlider.setValue(bpmVal, juce::dontSendNotification);
+    setBPM(bpmVal);
 
     int kickStyle = styleDist(rng);
 
@@ -175,7 +173,7 @@ void PatternGenerator::generateTechno(std::mt19937& rng)
     for (int step : hatSteps)
     {
         if (boolDist(rng) == 0)  // 50% get probability
-            tracks[2]->setStepModifier(step, '?', 50 + smallDist(rng) * 25);
+            trackManager.getTrack(2).setStepModifier(step, '?', 50 + smallDist(rng) * 25);
     }
 
     // Track 3: Bass - Euclidean with random pitch locks
@@ -187,10 +185,10 @@ void PatternGenerator::generateTechno(std::mt19937& rng)
     {
         if (boolDist(rng) == 0)  // 50% get pitch lock
         {
-            StepModifierState state = tracks[3]->getStepState(step);
+            StepModifierState state = trackManager.getTrack(3).getStepState(step);
             state.hasPitchLock = true;
             state.pitchLock = pitchDist(rng);
-            tracks[3]->setStepState(step, state);
+            trackManager.getTrack(3).setStepState(step, state);
         }
     }
 
@@ -210,8 +208,7 @@ void PatternGenerator::generateIdmGlitch(std::mt19937& rng)
     std::uniform_int_distribution<int> offsetDist(0, 15);
 
     int bpmVal = 135 + mediumDist(rng) * 5;  // 135-150 BPM
-    bpm.store(bpmVal);
-    bpmSlider.setValue(bpmVal, juce::dontSendNotification);
+    setBPM(bpmVal);
 
     // Track 0: Kick - Sparse random
     setTrackCategoryIfAvailable(0, "bd");
@@ -219,7 +216,7 @@ void PatternGenerator::generateIdmGlitch(std::mt19937& rng)
     auto kickSteps = getEuclidean(kickPulse, 16, offsetDist(rng));
     setStepsOnTrack(0, kickSteps);
     for (int step : kickSteps)
-        tracks[0]->setStepModifier(step, '?', 60 + smallDist(rng) * 15);
+        trackManager.getTrack(0).setStepModifier(step, '?', 60 + smallDist(rng) * 15);
 
     // Track 1: Snare - Random with replicates
     setTrackCategoryIfAvailable(1, "sn");
@@ -228,16 +225,16 @@ void PatternGenerator::generateIdmGlitch(std::mt19937& rng)
     setStepsOnTrack(1, snareSteps);
     for (int step : snareSteps)
         if (boolDist(rng) == 0)
-            tracks[1]->setStepModifier(step, '!', 2 + smallDist(rng));
+            trackManager.getTrack(1).setStepModifier(step, '!', 2 + smallDist(rng));
 
     // Track 2: Hi-Hats - Chaos with random ratchets
     setTrackCategoryIfAvailable(2, "hh");
     int hatFill = 8 + mediumDist(rng) * 4;  // 8-20 steps
     for (int step = 0; step < hatFill && step < 16; ++step)
     {
-        tracks[2]->setStepActive(step, true);
+        trackManager.getTrack(2).setStepActive(step, true);
         if (boolDist(rng) == 0)
-            tracks[2]->setStepModifier(step, '*', 2 + smallDist(rng));
+            trackManager.getTrack(2).setStepModifier(step, '*', 2 + smallDist(rng));
     }
 
     // Track 3: Bass - Random glitchy
@@ -251,10 +248,10 @@ void PatternGenerator::generateIdmGlitch(std::mt19937& rng)
     setStepsOnTrack(5, glitchSteps);
     for (int step : glitchSteps)
     {
-        StepModifierState state = tracks[5]->getStepState(step);
+        StepModifierState state = trackManager.getTrack(5).getStepState(step);
         state.hasVolLock = true;
         state.volLock = 0.3f + volPercentDist(rng) * 0.14f;
-        tracks[5]->setStepState(step, state);
+        trackManager.getTrack(5).setStepState(step, state);
     }
 }
 
@@ -265,8 +262,7 @@ void PatternGenerator::generateTrapDrill(std::mt19937& rng)
     std::uniform_int_distribution<int> mediumDist(0, 3);
 
     int bpmVal = 140 + smallDist(rng) * 10;  // 140-160 BPM
-    bpm.store(bpmVal);
-    bpmSlider.setValue(bpmVal, juce::dontSendNotification);
+    setBPM(bpmVal);
 
     // Track 0: Kick - Random trap pattern
     setTrackCategoryIfAvailable(0, "bd");
@@ -280,16 +276,16 @@ void PatternGenerator::generateTrapDrill(std::mt19937& rng)
     setTrackCategoryIfAvailable(1, "sn");
     setStepsOnTrack(1, {4, 12});
     if (boolDist(rng))
-        tracks[1]->setStepModifier(12, '!', 2);
+        trackManager.getTrack(1).setStepModifier(12, '!', 2);
 
     // Track 2: Hi-Hats - Dense with random drill rolls
     setTrackCategoryIfAvailable(2, "hh");
     setStepsOnTrack(2, getEuclidean(12 + boolDist(rng) * 2, 16, 0));
     // Random drill rolls
     int rollStep = 6 + mediumDist(rng) * 2;
-    tracks[2]->setStepModifier(rollStep, '*', 3 + boolDist(rng));
+    trackManager.getTrack(2).setStepModifier(rollStep, '*', 3 + boolDist(rng));
     if (boolDist(rng))
-        tracks[2]->setStepModifier(14, '*', 4);
+        trackManager.getTrack(2).setStepModifier(14, '*', 4);
 
     // Track 3: 808 Bass - Match kick with sliding pitch
     setTrackCategoryIfAvailable(3, "bass");
@@ -297,12 +293,12 @@ void PatternGenerator::generateTrapDrill(std::mt19937& rng)
     int lastPitch = -12;
     for (int step : kickPattern)
     {
-        StepModifierState state = tracks[3]->getStepState(step);
+        StepModifierState state = trackManager.getTrack(3).getStepState(step);
         state.hasPitchLock = true;
         state.pitchLock = lastPitch + (smallDist(rng) - 1) * 3;  // Slide up/down
         state.pitchLock = std::max(-12, std::min(5, state.pitchLock));
         lastPitch = state.pitchLock;
-        tracks[3]->setStepState(step, state);
+        trackManager.getTrack(3).setStepState(step, state);
     }
 
     // Track 4: Percussion
@@ -317,8 +313,7 @@ void PatternGenerator::generateAmbient(std::mt19937& rng)
     std::uniform_int_distribution<int> mediumDist(0, 3);
 
     int bpmVal = 60 + smallDist(rng) * 15;  // 60-90 BPM
-    bpm.store(bpmVal);
-    bpmSlider.setValue(bpmVal, juce::dontSendNotification);
+    setBPM(bpmVal);
 
     // Track 0: Very sparse kick
     setTrackCategoryIfAvailable(0, "bd");
@@ -329,7 +324,7 @@ void PatternGenerator::generateAmbient(std::mt19937& rng)
     auto snareSteps = getEuclidean(1, 16, 8);
     setStepsOnTrack(1, snareSteps);
     for (int step : snareSteps)
-        tracks[1]->setStepModifier(step, '/', 2 + boolDist(rng));
+        trackManager.getTrack(1).setStepModifier(step, '/', 2 + boolDist(rng));
 
     // Track 2: Pads with elongate
     setTrackCategoryIfAvailable(2, "st");
@@ -338,9 +333,9 @@ void PatternGenerator::generateAmbient(std::mt19937& rng)
     setStepsOnTrack(2, padSteps);
     for (int step : padSteps)
     {
-        tracks[2]->setStepModifier(step, '@', 2 + mediumDist(rng));
+        trackManager.getTrack(2).setStepModifier(step, '@', 2 + mediumDist(rng));
         if (boolDist(rng))
-            tracks[2]->setStepModifier(step, '/', 2);
+            trackManager.getTrack(2).setStepModifier(step, '/', 2);
     }
 
     // Track 3: Sub Bass
@@ -350,11 +345,11 @@ void PatternGenerator::generateAmbient(std::mt19937& rng)
     setStepsOnTrack(3, subSteps);
     for (int step : subSteps)
     {
-        tracks[3]->setStepModifier(step, '@', 2 + smallDist(rng));
-        StepModifierState state = tracks[3]->getStepState(step);
+        trackManager.getTrack(3).setStepModifier(step, '@', 2 + smallDist(rng));
+        StepModifierState state = trackManager.getTrack(3).getStepState(step);
         state.hasPitchLock = true;
         state.pitchLock = -12 + smallDist(rng) * 2;
-        tracks[3]->setStepState(step, state);
+        trackManager.getTrack(3).setStepState(step, state);
     }
 
     // Track 4: Sparse Perc
@@ -364,9 +359,9 @@ void PatternGenerator::generateAmbient(std::mt19937& rng)
     setStepsOnTrack(4, percSteps);
     for (int step : percSteps)
     {
-        tracks[4]->setStepModifier(step, '?', 30 + mediumDist(rng) * 20);
+        trackManager.getTrack(4).setStepModifier(step, '?', 30 + mediumDist(rng) * 20);
         if (boolDist(rng))
-            tracks[4]->setStepModifier(step, '!', 2);
+            trackManager.getTrack(4).setStepModifier(step, '!', 2);
     }
 
     // Track 5: Sparse Noise
@@ -382,8 +377,7 @@ void PatternGenerator::generateDnB(std::mt19937& rng)
     std::uniform_int_distribution<int> pitchDist(-12, 5);
 
     int bpmVal = 170 + smallDist(rng) * 10;  // 170-180 BPM
-    bpm.store(bpmVal);
-    bpmSlider.setValue(bpmVal, juce::dontSendNotification);
+    setBPM(bpmVal);
 
     // Track 0: Kick - Random breakbeat
     setTrackCategoryIfAvailable(0, "bd");
@@ -400,7 +394,7 @@ void PatternGenerator::generateDnB(std::mt19937& rng)
     setTrackCategoryIfAvailable(1, "sn");
     setStepsOnTrack(1, {4, 12});
     if (boolDist(rng))
-        tracks[1]->setStepModifier(12, '!', 2);
+        trackManager.getTrack(1).setStepModifier(12, '!', 2);
 
     // Track 2: Hi-Hats - Dense with random ratchets
     setTrackCategoryIfAvailable(2, "hh");
@@ -408,13 +402,13 @@ void PatternGenerator::generateDnB(std::mt19937& rng)
     {
         if (boolDist(rng) || step % 2 == 0)
         {
-            tracks[2]->setStepActive(step, true);
+            trackManager.getTrack(2).setStepActive(step, true);
             if (boolDist(rng) == 0)
-                tracks[2]->setStepModifier(step, '*', 2 + smallDist(rng));
+                trackManager.getTrack(2).setStepModifier(step, '*', 2 + smallDist(rng));
         }
     }
     // Always add at least one ratchet
-    tracks[2]->setStepModifier(14, '*', 4);
+    trackManager.getTrack(2).setStepModifier(14, '*', 4);
 
     // Track 3: Reese Bass
     setTrackCategoryIfAvailable(3, "bass");
@@ -423,10 +417,10 @@ void PatternGenerator::generateDnB(std::mt19937& rng)
     setStepsOnTrack(3, bassSteps);
     for (int step : bassSteps)
     {
-        StepModifierState state = tracks[3]->getStepState(step);
+        StepModifierState state = trackManager.getTrack(3).getStepState(step);
         state.hasPitchLock = true;
         state.pitchLock = -12 + pitchDist(rng);
-        tracks[3]->setStepState(step, state);
+        trackManager.getTrack(3).setStepState(step, state);
     }
 
     // Track 4: Percussion
@@ -443,8 +437,7 @@ void PatternGenerator::generateHouse(std::mt19937& rng)
     std::uniform_int_distribution<int> offsetDist(0, 15);
 
     int bpmVal = 120 + smallDist(rng) * 10;  // 120-130 BPM
-    bpm.store(bpmVal);
-    bpmSlider.setValue(bpmVal, juce::dontSendNotification);
+    setBPM(bpmVal);
 
     // Track 0: Kick - 4-on-the-floor (always)
     setTrackCategoryIfAvailable(0, "bd");
@@ -469,8 +462,8 @@ void PatternGenerator::generateHouse(std::mt19937& rng)
 
     for (int step = 0; step < 16; ++step)
     {
-        if (tracks[2]->isStepActive(step) && boolDist(rng))
-            tracks[2]->setStepModifier(step, '?', 40 + mediumDist(rng) * 20);
+        if (trackManager.getTrack(2).isStepActive(step) && boolDist(rng))
+            trackManager.getTrack(2).setStepModifier(step, '?', 40 + mediumDist(rng) * 20);
     }
 
     // Track 3: Bass - Classic with groove
@@ -486,12 +479,12 @@ void PatternGenerator::generateHouse(std::mt19937& rng)
     // Add volume variation
     for (int step = 0; step < 16; ++step)
     {
-        if (tracks[3]->isStepActive(step) && boolDist(rng))
+        if (trackManager.getTrack(3).isStepActive(step) && boolDist(rng))
         {
-            StepModifierState state = tracks[3]->getStepState(step);
+            StepModifierState state = trackManager.getTrack(3).getStepState(step);
             state.hasVolLock = true;
             state.volLock = 0.5f + smallDist(rng) * 0.2f;
-            tracks[3]->setStepState(step, state);
+            trackManager.getTrack(3).setStepState(step, state);
         }
     }
 

@@ -53,6 +53,22 @@ target_sources(NeonSakuraStudio
     source/Main.cpp
     source/MainComponent.h
     source/MainComponent.cpp
+
+    # Interfaces
+    source/ITrackDataProvider.h
+    source/ISampleProvider.h
+
+    # Managers and Controllers
+    source/TrackManager.h
+    source/TrackManager.cpp
+    source/SampleManager.h
+    source/SampleManager.cpp
+    source/PlaybackController.h
+    source/PlaybackController.cpp
+    source/PanelManager.h
+    source/PanelManager.cpp
+
+    # Core Components
     source/TrackModel.h
     source/TrackModel.cpp
     source/TrackType.h

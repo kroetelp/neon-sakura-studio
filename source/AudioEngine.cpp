@@ -1,11 +1,19 @@
 #include "AudioEngine.h"
-#include "TrackComponent.h"
+#include "PlaybackController.h"
 #include "TrackType.h"
+#include "TrackModel.h"
 #include "Modulation/ModulationSource.h"
 #include "WavetableSynth/WavetableSynth.h"
 
-AudioEngine::AudioEngine(std::array<std::unique_ptr<TrackComponent>, numTracks>& tracksRef)
-    : tracks(tracksRef)
+AudioEngine::AudioEngine(ITrackDataProvider* provider)
+    : trackProvider(provider)
+    , playbackController(nullptr)
+{
+}
+
+AudioEngine::AudioEngine(ITrackDataProvider* provider, PlaybackController* controller)
+    : trackProvider(provider)
+    , playbackController(controller)
 {
 }
 
@@ -26,16 +34,25 @@ void AudioEngine::prepareToPlay(int samplesPerBlockExpected, double newSampleRat
     wavetableEngine.prepareToPlay(samplesPerBlockExpected, newSampleRate);
     wavetableBuffer = std::make_unique<juce::AudioBuffer<float>>(2, samplesPerBlockExpected);
 
-    // Pre-allocate track buffers and modulation filters to avoid allocation in audio thread
+    // Pre-allocate track buffers and modulation filters
     for (int i = 0; i < numTracks; ++i)
     {
         trackBuffers[i] = std::make_unique<juce::AudioBuffer<float>>(2, samplesPerBlockExpected);
         modulationFilters[i] = std::make_unique<FilterProcessor>();
         modulationFilters[i]->reset();
-        tracks[i]->getSynthesiser().setCurrentPlaybackSampleRate(newSampleRate);
-        tracks[i]->prepareAudio(newSampleRate, samplesPerBlockExpected);
+        trackProvider->getSynthesiser(i).setCurrentPlaybackSampleRate(newSampleRate);
     }
-    calculateSamplesPerStep();
+
+    // Sync with PlaybackController if available
+    if (playbackController)
+    {
+        playbackController->setSampleRate(newSampleRate);
+        samplesPerStep.store(playbackController->getSamplesPerStep());
+    }
+    else
+    {
+        calculateSamplesPerStep();
+    }
 }
 
 void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill)
@@ -48,14 +65,13 @@ void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferTo
 
     std::array<juce::MidiBuffer, numTracks> trackMidiBuffers;
 
-    // Random number generator for probability modifier (using member for reproducibility)
+    // Random number generator for probability modifier
     std::uniform_int_distribution<int> probDist(1, 100);
 
     if (localIsPlaying && localSamplesPerStep > 0)
     {
         const int swingOffsetSamples = (int)(localSamplesPerStep * swingVal);
 
-        // OPTIMIZED: Process step changes instead of every sample
         const uint64_t startSamplePos = samplePosition.load();
         const uint64_t endSamplePos = startSamplePos + bufferToFill.numSamples;
 
@@ -63,7 +79,7 @@ void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferTo
         for (int trackIdx = 0; trackIdx < numTracks; ++trackIdx)
         {
             // PER-TRACK loop length for polyrhythms
-            const int trackLoopLen = tracks[trackIdx]->getTrackLoopLength();
+            const int trackLoopLen = trackProvider->getTrackLoopLength(trackIdx);
 
             // Iterate through steps in this buffer
             for (uint64_t samplePos = startSamplePos; samplePos < endSamplePos; )
@@ -73,13 +89,13 @@ void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferTo
                 const int nextStepBoundary = ((int)(samplePos / localSamplesPerStep) + 1) * localSamplesPerStep;
                 const int samplesUntilNextStep = (int)juce::jmin((uint64_t)nextStepBoundary - samplePos, endSamplePos - samplePos);
 
-                if (tracks[trackIdx]->isStepActive(currentStep))
+                if (trackProvider->isStepActive(trackIdx, currentStep))
                 {
-                    const StepModifierState stepState = tracks[trackIdx]->getStepState(currentStep);
+                    const StepModifierState stepState = trackProvider->getStepState(trackIdx, currentStep);
 
                     // P-Lock: Use locked values if available, otherwise use track defaults
-                    const float trackVolume = tracks[trackIdx]->getVolume();
-                    const int trackPitch = tracks[trackIdx]->getPitch();
+                    const float trackVolume = trackProvider->getVolume(trackIdx);
+                    const int trackPitch = trackProvider->getPitch(trackIdx);
                     const float finalVolume = stepState.hasVolLock ? stepState.volLock : trackVolume;
                     const int finalPitch = stepState.hasPitchLock ? stepState.pitchLock : trackPitch;
 
@@ -88,7 +104,6 @@ void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferTo
 
                     const bool stepChanged = (currentStep != trackLastStep[trackIdx]);
 
-                    // Calculate sample index within buffer
                     const int sampleIndexInBuffer = (int)(samplePos - startSamplePos);
 
                     // Apply swing offset for odd steps
@@ -100,7 +115,6 @@ void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferTo
 
                     if (stepChanged)
                     {
-                        // Handle different modifiers
                         bool shouldTrigger = false;
 
                         if (stepState.modifierType == '/')
@@ -111,7 +125,7 @@ void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferTo
                         }
                         else if (stepState.modifierType == '?')
                         {
-                            // Probability modifier - roll dice once per step trigger
+                            // Probability modifier
                             int roll = probDist(probabilityRng);
                             if (roll <= stepState.modifierValue)
                                 shouldTrigger = true;
@@ -126,8 +140,7 @@ void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferTo
                             juce::MidiMessage midiMessage = juce::MidiMessage::noteOn(1, midiNote, velocity);
                             trackMidiBuffers[trackIdx].addEvent(midiMessage, eventIndex);
 
-                            // Calculate note-off time based on gate ratio (default 80% of step)
-                            const float gateRatio = 0.8f;  // Could be made adjustable per track
+                            const float gateRatio = 0.8f;
                             const int noteOffDelay = juce::jmax(1, static_cast<int>(localSamplesPerStep * gateRatio));
                             const int noteOffIndex = juce::jmin(eventIndex + noteOffDelay, bufferToFill.numSamples - 1);
 
@@ -156,7 +169,6 @@ void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferTo
                             juce::MidiMessage midiMessage = juce::MidiMessage::noteOn(1, midiNote, velocity);
                             trackMidiBuffers[trackIdx].addEvent(midiMessage, ratchetEventIndex);
 
-                            // Add note-off for ratchet notes
                             const int ratchetGateTime = juce::jmax(1, samplesPerRatchet / 2);
                             const int ratchetNoteOffIndex = juce::jmin(ratchetEventIndex + ratchetGateTime, bufferToFill.numSamples - 1);
                             juce::MidiMessage ratchetNoteOffMessage = juce::MidiMessage::noteOff(1, midiNote);
@@ -166,7 +178,6 @@ void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferTo
                     }
                 }
 
-                // Move to next step boundary or end of buffer
                 samplePos += samplesUntilNextStep;
             }
         }
@@ -174,7 +185,13 @@ void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferTo
         // Update global sample position
         samplePosition.store(endSamplePos);
 
-        // Update global loop counter based on global loop length
+        // Update PlaybackController if available
+        if (playbackController)
+        {
+            playbackController->setSamplePosition(endSamplePos);
+        }
+
+        // Update global loop counter
         const int globalLoopLen = loopLength.load();
         const uint64_t globalStep = endSamplePos / localSamplesPerStep;
         if (globalStep / globalLoopLen > lastGlobalLoopCheck)
@@ -184,16 +201,12 @@ void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferTo
         }
     }
 
-    // Render all tracks and mix into buffer
     renderAndMixTracks(bufferToFill, trackMidiBuffers);
-
-    // Apply master reverb
     applyMasterReverb(*bufferToFill.buffer);
 }
 
 void AudioEngine::releaseResources()
 {
-    // Clean up buffers and filters
     for (int i = 0; i < numTracks; ++i)
     {
         trackBuffers[i].reset();
@@ -201,7 +214,6 @@ void AudioEngine::releaseResources()
             modulationFilters[i]->reset();
     }
 
-    // Clean up wavetable buffer
     wavetableBuffer.reset();
     wavetableMidiBuffer.clear();
     wavetableEngine.releaseResources();
@@ -210,6 +222,9 @@ void AudioEngine::releaseResources()
 void AudioEngine::startPlayback()
 {
     playing.store(true);
+
+    if (playbackController)
+        playbackController->startPlayback();
 }
 
 void AudioEngine::stopPlayback()
@@ -219,19 +234,21 @@ void AudioEngine::stopPlayback()
     globalLoopCounter = 0;
     lastGlobalLoopCheck = 0;
 
-    for (auto& track : tracks)
+    for (int i = 0; i < numTracks; ++i)
     {
-        track->getSynthesiser().allNotesOff(0, false);
+        trackProvider->getSynthesiser(i).allNotesOff(0, false);
     }
 
     samplePosition.store(0);
 
-    // Reset per-track state
     for (int i = 0; i < numTracks; ++i)
     {
         trackLastStep[i] = -1;
         trackLastRatchet[i] = -1;
     }
+
+    if (playbackController)
+        playbackController->stopPlayback();
 }
 
 void AudioEngine::resetPlaybackPosition()
@@ -239,19 +256,26 @@ void AudioEngine::resetPlaybackPosition()
     globalLoopCounter = 0;
     lastGlobalLoopCheck = 0;
 
-    for (auto& track : tracks)
+    for (int i = 0; i < numTracks; ++i)
     {
-        track->getSynthesiser().allNotesOff(0, false);
+        trackProvider->getSynthesiser(i).allNotesOff(0, false);
     }
 
     samplePosition.store(0);
 
-    // Reset per-track state
     for (int i = 0; i < numTracks; ++i)
     {
         trackLastStep[i] = -1;
         trackLastRatchet[i] = -1;
     }
+
+    if (playbackController)
+        playbackController->resetPlaybackPosition();
+}
+
+bool AudioEngine::isPlaying() const
+{
+    return playing.load();
 }
 
 void AudioEngine::setBPM(double newBpm)
@@ -259,32 +283,47 @@ void AudioEngine::setBPM(double newBpm)
     bpm.store(newBpm);
     calculateSamplesPerStep();
     wavetableEngine.setBPM(static_cast<float>(newBpm));
+
+    if (playbackController)
+        playbackController->setBPM(newBpm);
 }
 
 void AudioEngine::setSwingAmount(float swing)
 {
     swingAmount.store(swing);
+
+    if (playbackController)
+        playbackController->setSwingAmount(swing);
 }
 
 void AudioEngine::setLoopLength(int steps)
 {
     loopLength.store(steps);
-    // Reset per-track state when loop length changes
+
     for (int i = 0; i < numTracks; ++i)
     {
         trackLastStep[i] = -1;
         trackLastRatchet[i] = -1;
     }
+
+    if (playbackController)
+        playbackController->setLoopLength(steps);
 }
 
 void AudioEngine::setMasterVolume(float volume)
 {
     masterVolume.store(volume);
+
+    if (playbackController)
+        playbackController->setMasterVolume(volume);
 }
 
 void AudioEngine::setReverbWetLevel(float wetLevel)
 {
     reverbWetLevel.store(wetLevel);
+
+    if (playbackController)
+        playbackController->setReverbWetLevel(wetLevel);
 }
 
 void AudioEngine::resetTrackStates()
@@ -294,6 +333,16 @@ void AudioEngine::resetTrackStates()
         trackLastStep[i] = -1;
         trackLastRatchet[i] = -1;
     }
+}
+
+uint64_t AudioEngine::getSamplePosition() const
+{
+    return samplePosition.load();
+}
+
+int AudioEngine::getSamplesPerStep() const
+{
+    return samplesPerStep.load();
 }
 
 void AudioEngine::calculateSamplesPerStep()
@@ -313,7 +362,7 @@ void AudioEngine::renderAndMixTracks(const juce::AudioSourceChannelInfo& bufferT
     bool anySolo = false;
     for (int trackIdx = 0; trackIdx < numTracks; ++trackIdx)
     {
-        if (tracks[trackIdx]->getSolo())
+        if (trackProvider->getSolo(trackIdx))
         {
             anySolo = true;
             break;
@@ -326,38 +375,36 @@ void AudioEngine::renderAndMixTracks(const juce::AudioSourceChannelInfo& bufferT
     for (int trackIdx = 0; trackIdx < numTracks; ++trackIdx)
     {
         // Check mute/solo state
-        const bool trackMuted = tracks[trackIdx]->getMuted();
-        const bool trackSolo = tracks[trackIdx]->getSolo();
+        const bool trackMuted = trackProvider->getMuted(trackIdx);
+        const bool trackSolo = trackProvider->getSolo(trackIdx);
 
         // Skip track if muted, or if another track is soloed and this one isn't
         if (trackMuted || (anySolo && !trackSolo))
             continue;
 
         // Get track type
-        const TrackType trackType = tracks[trackIdx]->getTrackType();
+        const TrackType trackType = trackProvider->getTrackType(trackIdx);
 
         // Apply wavetable modulation to track parameters if enabled (sampler tracks only)
-        if (trackType == TrackType::Sampler && isModulatorMode && tracks[trackIdx]->getWavetableModulationEnabled())
+        if (trackType == TrackType::Sampler && isModulatorMode && trackProvider->getWavetableModulationEnabled(trackIdx))
         {
-            // Get modulation values from wavetable engine
             float cutoffMod = wavetableEngine.getModulationValue(trackIdx, ModulationTarget::Filter_Cutoff);
             float pitchMod = wavetableEngine.getModulationValue(trackIdx, ModulationTarget::Osc1_Pitch);
 
-            // Apply filter cutoff modulation (exponential scaling for musical response)
             if (cutoffMod != 0.0f)
             {
-                float currentCutoff = tracks[trackIdx]->getCutoff();
-                // Scale modulation logarithmically for cutoff
-                float modFactor = 1.0f + (cutoffMod * 2.0f);  // -1 to +1 becomes 0x to 3x
+                float currentCutoff = trackProvider->getCutoff(trackIdx);
+                float modFactor = 1.0f + (cutoffMod * 2.0f);
                 float newCutoff = currentCutoff * modFactor;
                 newCutoff = juce::jlimit(20.0f, 20000.0f, newCutoff);
+                (void)newCutoff;  // TODO: Apply to filter
             }
+            (void)pitchMod;  // TODO: Apply pitch modulation
         }
 
-        // Use pre-allocated buffer instead of creating new one each block
+        // Use pre-allocated buffer
         auto& tempBuffer = *trackBuffers[trackIdx];
 
-        // Ensure buffer is large enough (in case block size changed)
         if (tempBuffer.getNumSamples() < bufferToFill.numSamples)
         {
             tempBuffer.setSize(2, bufferToFill.numSamples);
@@ -369,38 +416,32 @@ void AudioEngine::renderAndMixTracks(const juce::AudioSourceChannelInfo& bufferT
         if (trackType == TrackType::Wavetable)
         {
             // Render wavetable synth directly (per-track synth instance)
-            auto* wtSynth = tracks[trackIdx]->getWavetableSynth();
+            auto* wtSynth = trackProvider->getWavetableSynth(trackIdx);
             if (wtSynth)
             {
-                // Process modulations before rendering
                 wtSynth->processModulations();
-
-                // Render the wavetable synth
                 wtSynth->renderNextBlock(tempBuffer,
                     trackMidiBuffers[trackIdx], 0, bufferToFill.numSamples);
             }
 
-            // Apply synth-specific audio processing (filter, etc.)
-            tracks[trackIdx]->processAudioBlock(tempBuffer);
+            trackProvider->processAudioBlock(trackIdx, tempBuffer);
         }
         else
         {
-            // Sampler mode - render sampler
-            tracks[trackIdx]->getSynthesiser().renderNextBlock(tempBuffer,
+            // Sampler mode
+            trackProvider->getSynthesiser(trackIdx).renderNextBlock(tempBuffer,
                 trackMidiBuffers[trackIdx], 0, bufferToFill.numSamples);
 
             // Apply modulation-affected filter processing (sampler only)
-            if (isModulatorMode && tracks[trackIdx]->getWavetableModulationEnabled())
+            if (isModulatorMode && trackProvider->getWavetableModulationEnabled(trackIdx))
             {
                 float cutoffMod = wavetableEngine.getModulationValue(trackIdx, ModulationTarget::Filter_Cutoff);
                 if (cutoffMod != 0.0f)
                 {
-                    // Apply modulated filter to the rendered audio
-                    float currentCutoff = tracks[trackIdx]->getCutoff();
+                    float currentCutoff = trackProvider->getCutoff(trackIdx);
                     float modFactor = 1.0f + (cutoffMod * 2.0f);
                     float newCutoff = juce::jlimit(20.0f, 20000.0f, currentCutoff * modFactor);
 
-                    // Use pre-allocated filter (no allocation in audio thread)
                     *modulationFilters[trackIdx]->state = *juce::dsp::IIR::Coefficients<float>::makeLowPass(
                         currentSampleRate, newCutoff, 0.5f);
 
@@ -409,7 +450,7 @@ void AudioEngine::renderAndMixTracks(const juce::AudioSourceChannelInfo& bufferT
                 }
             }
 
-            tracks[trackIdx]->processAudioBlock(tempBuffer);
+            trackProvider->processAudioBlock(trackIdx, tempBuffer);
         }
 
         for (int channel = 0; channel < bufferToFill.buffer->getNumChannels(); ++channel)
@@ -421,7 +462,6 @@ void AudioEngine::renderAndMixTracks(const juce::AudioSourceChannelInfo& bufferT
     // Process Wavetable Synth in Standalone mode
     if (wavetableEngine.getMode() == WavetableEngine::Mode::Standalone)
     {
-        // Ensure buffer is large enough
         if (wavetableBuffer->getNumSamples() < bufferToFill.numSamples)
         {
             wavetableBuffer->setSize(2, bufferToFill.numSamples);
@@ -430,10 +470,8 @@ void AudioEngine::renderAndMixTracks(const juce::AudioSourceChannelInfo& bufferT
         wavetableBuffer->clear();
         wavetableMidiBuffer.clear();
 
-        // Process the wavetable synth
         wavetableEngine.processBlock(*wavetableBuffer, wavetableMidiBuffer);
 
-        // Mix into main buffer
         for (int channel = 0; channel < bufferToFill.buffer->getNumChannels(); ++channel)
         {
             bufferToFill.buffer->addFrom(channel, 0, *wavetableBuffer, channel, 0, bufferToFill.numSamples, vol);

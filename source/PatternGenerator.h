@@ -1,5 +1,15 @@
 #pragma once
 
+/**
+ * PatternGenerator - Algorithmic pattern generation for various genres
+ *
+ * This class is decoupled from MainComponent through interfaces:
+ * - TrackManager: Access to tracks for pattern manipulation
+ * - ISampleProvider: Access to sample categories and loading
+ *
+ * Uses callbacks for BPM changes instead of direct UI access.
+ */
+
 #include <juce_core/juce_core.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <vector>
@@ -7,9 +17,11 @@
 #include <memory>
 #include <random>
 #include <atomic>
+#include <functional>
 
 // Forward declarations
-class TrackComponent;
+class TrackManager;
+class ISampleProvider;
 struct StepModifierState;
 
 class PatternGenerator
@@ -17,27 +29,34 @@ class PatternGenerator
 public:
     enum class Genre { TECHNO = 1, HOUSE = 2, TRAP = 3, DNB = 4, AMBIENT = 5, GARAGE = 6 };
 
+    /**
+     * Constructor with decoupled dependencies
+     * @param trackManager Access to tracks for pattern manipulation
+     * @param sampleProvider Access to sample categories and loading
+     * @param onBpmChangedCallback Callback when BPM changes (to notify UI)
+     */
     PatternGenerator(
-        std::array<std::unique_ptr<TrackComponent>, 8>& tracksRef,
-        const juce::StringArray& categoriesRef,
-        const juce::File& directoryRef,
-        std::atomic<double>& bpmRef,
-        juce::Slider& bpmSliderRef,
-        std::function<void()> onBpmChangedCallback
+        TrackManager& trackManager,
+        ISampleProvider& sampleProvider,
+        std::function<void(double)> onBpmChangedCallback = nullptr
     );
 
+    // Generate a song pattern for the specified genre
     void generateSong(Genre genre);
+
+    // Clear a single track (steps and P-Locks)
     void clearTrackFully(int trackIdx);
+
+    // Clear all tracks
     void clearAllTracks();
 
 private:
-    // Dependencies (references to MainComponent members)
-    std::array<std::unique_ptr<TrackComponent>, 8>& tracks;
-    const juce::StringArray& sampleCategories;
-    const juce::File& sampleDirectory;
-    std::atomic<double>& bpm;
-    juce::Slider& bpmSlider;
-    std::function<void()> onBpmChanged;
+    // Dependencies
+    TrackManager& trackManager;
+    ISampleProvider& sampleProvider;
+
+    // Callback for BPM changes
+    std::function<void(double)> onBpmChanged;
 
     // Helper functions
     bool setTrackCategoryIfAvailable(int trackIdx, const juce::String& category);
@@ -52,6 +71,9 @@ private:
     void generateAmbient(std::mt19937& rng);
     void generateDnB(std::mt19937& rng);
     void generateHouse(std::mt19937& rng);
+
+    // Set BPM and notify callback
+    void setBPM(double newBpm);
 
     static constexpr int numTracks = 8;
     static constexpr int totalSteps = 64;

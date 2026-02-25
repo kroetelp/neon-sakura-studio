@@ -1,5 +1,24 @@
 #pragma once
 
+/**
+ * MainComponent - Main application component (UI coordination only)
+ *
+ * After refactoring, MainComponent is no longer a "God Class".
+ * It delegates responsibilities to specialized managers:
+ * - TrackManager: Track array ownership and access
+ * - SampleManager: Sample directory and category management
+ * - PlaybackController: Playback state management
+ * - PanelManager: Side panels and floating windows
+ * - AudioEngine: Audio processing (uses ITrackDataProvider interface)
+ * - PatternGenerator: Algorithmic pattern generation
+ *
+ * MainComponent now focuses on:
+ * - Top-level UI layout
+ * - UI event handlers (buttons, sliders)
+ * - Connecting UI to controllers
+ * - AudioAppComponent delegation
+ */
+
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -11,15 +30,20 @@
 #include <chrono>
 #include <atomic>
 #include <memory>
-#include "TrackComponent.h"
-#include "PatternGenerator.h"
-#include "AudioEngine.h"
-#include "RhythmExplorer.h"
-#include "MelodyPanel.h"
-#include "WavetableUI/WavetableSynthEditor.h"
+
+// Forward declarations
+class TrackManager;
+class SampleManager;
+class PlaybackController;
+class PanelManager;
+class AudioEngine;
+class PatternGenerator;
+class RhythmExplorer;
+class MelodyPanel;
+class WavetableParams;
 
 class MainComponent : public juce::AudioAppComponent,
-                       public juce::Timer
+                      public juce::Timer
 {
 public:
     MainComponent();
@@ -37,16 +61,44 @@ public:
 private:
     static constexpr int numTracks = 8;
 
-    // Audio format management (kept for TrackComponent creation)
+    // ========================================================================
+    // MANAGERS AND CONTROLLERS (Decoupled responsibilities)
+    // ========================================================================
+
+    // Audio format management (kept for TrackManager creation)
     juce::AudioFormatManager formatManager;
 
-    // GUI Components - Top controls
+    // Track management (owns track array)
+    std::unique_ptr<TrackManager> trackManager;
+
+    // Sample management (directory, categories, loading)
+    std::unique_ptr<SampleManager> sampleManager;
+
+    // Playback state (BPM, swing, playing, etc.)
+    std::unique_ptr<PlaybackController> playbackController;
+
+    // Panel management (side panels, floating windows)
+    std::unique_ptr<PanelManager> panelManager;
+
+    // Audio processing
+    std::unique_ptr<AudioEngine> audioEngine;
+
+    // Pattern generation
+    std::unique_ptr<PatternGenerator> patternGenerator;
+
+    // ========================================================================
+    // GUI COMPONENTS (Top controls)
+    // ========================================================================
+
     juce::TextButton playButton;
     juce::TextButton stopButton;
     juce::TextButton setFolderButton;
     juce::TextButton clearAllButton;
-    juce::TextButton audioSettingsButton;  // Audio device selection
-    juce::TextButton rhythmExplorerButton;  // Toggle for RhythmExplorer panel
+    juce::TextButton audioSettingsButton;
+    juce::TextButton rhythmExplorerButton;
+    juce::TextButton melodyWorkstationButton;
+    juce::TextButton wavetableSynthButton;
+
     juce::Slider bpmSlider;
     juce::Label bpmLabel;
     juce::Slider masterVolumeSlider;
@@ -61,55 +113,30 @@ private:
     juce::Slider reverbSlider;
     juce::Label reverbLabel;
 
-    // Rhythm Explorer panel
-    std::unique_ptr<RhythmExplorer> rhythmExplorer;
-    bool rhythmExplorerVisible = false;
+    // Track selection state (for RhythmExplorer and MelodyPanel)
     int selectedTrackForRhythm = 0;
-
-    // Melody Workstation panel
-    std::unique_ptr<MelodyPanel> melodyPanel;
-    bool melodyPanelVisible = false;
-    juce::TextButton melodyWorkstationButton;  // Toggle for MelodyPanel
-
-    // Wavetable Synth (separate window)
-    std::unique_ptr<WavetableSynthEditor> wavetableSynthEditor;
-    std::unique_ptr<juce::DocumentWindow> wavetableSynthWindow;
-    bool wavetableSynthVisible = false;
-    juce::TextButton wavetableSynthButton;
-
-    // Track Wavetable Editor (for editing track synth params)
-    std::unique_ptr<WavetableSynthEditor> trackWavetableEditor;
-    std::unique_ptr<juce::DocumentWindow> trackWavetableWindow;
-    int currentEditingTrack = -1;
-
-    // Track components
-    std::array<std::unique_ptr<TrackComponent>, numTracks> tracks;
-
-    // Audio Engine (handles all audio processing)
-    std::unique_ptr<AudioEngine> audioEngine;
-
-    // Sample directory
-    juce::File sampleDirectory;
-    juce::StringArray sampleCategories;
-    juce::CriticalSection directoryLock;
 
     // File chooser for folder selection
     std::unique_ptr<juce::FileChooser> chooser;
 
     // UI state
-    bool isResizing = false;  // Flag to prevent updates during resize
+    bool isResizing = false;
 
-    // BPM atomic for PatternGenerator (synced with AudioEngine)
-    std::atomic<double> bpm{120.0};
+    // ========================================================================
+    // HELPER METHODS
+    // ========================================================================
 
-    // Pending sample loads
-    struct PendingSampleLoad
-    {
-        int trackIndex;
-        juce::String category;
-    };
-    std::vector<PendingSampleLoad> pendingSampleLoads;
-    juce::CriticalSection pendingLoadLock;
+    void initializeManagers();
+    void initializeUI();
+    void connectTrackCallbacks();
+    void connectPanelCallbacks();
+    void connectUICallbacks();
+
+    void updatePlayhead();
+    void togglePlay();
+    void stopPlayback();
+    void openFolderChooser();
+    void showAudioSettingsDialog();
 
     // Colors
     juce::Colour getNeonPink() const { return juce::Colour(255, 20, 147); }
@@ -117,20 +144,6 @@ private:
     juce::Colour getNeonPurple() const { return juce::Colour(180, 0, 255); }
     juce::Colour getDarkBackground() const { return juce::Colour(15, 15, 25); }
     juce::Colour getStepInactive() const { return juce::Colour(30, 30, 45); }
-
-    // Helper methods
-    void updatePlayhead();
-    void togglePlay();
-    void stopPlayback();
-    void autoDetectSampleDirectory();
-    void openFolderChooser();
-    void scanSampleDirectory(const juce::File& directory);
-    void loadPendingSamples();
-    void showAudioSettingsDialog();  // Opens audio device selection dialog
-    void openTrackWavetableEditor(int trackIndex, std::shared_ptr<WavetableParams> params);
-
-    // Pattern generator
-    std::unique_ptr<PatternGenerator> patternGenerator;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };
