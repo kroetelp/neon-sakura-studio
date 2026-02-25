@@ -11,7 +11,6 @@ MainComponent::MainComponent()
         tracks[i] = std::make_unique<TrackComponent>(i, formatManager);
         addAndMakeVisible(tracks[i].get());
 
-        // Add category change handler to load samples
         tracks[i]->getComboBox().onChange = [this, i] {
             juce::String category = tracks[i]->getSelectedCategory();
             if (category.isNotEmpty() && sampleDirectory.exists())
@@ -19,10 +18,16 @@ MainComponent::MainComponent()
                 tracks[i]->loadSampleForCategory(category, sampleDirectory);
             }
         };
+
+        // Bind collapse callback to trigger resized()
+        tracks[i]->onStateChange = [this] { resized(); };
     }
 
     // Auto-detect sample directory on startup
     autoDetectSampleDirectory();
+
+    // Create AudioEngine with track references
+    audioEngine = std::make_unique<AudioEngine>(tracks);
 
     // Then set audio channels
     setAudioChannels(2, 2);
@@ -51,20 +56,42 @@ MainComponent::MainComponent()
     // Folder label
     folderLabel.setText("No folder selected", juce::dontSendNotification);
     folderLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
-    folderLabel.setFont(juce::Font(12.0f));
     addAndMakeVisible(folderLabel);
+
+    // Clear All button
+    clearAllButton.setButtonText("Clear All");
+    clearAllButton.setColour(juce::TextButton::buttonColourId, juce::Colour(80, 30, 30));
+    clearAllButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    addAndMakeVisible(clearAllButton);
+    clearAllButton.onClick = [this] {
+        for (int i = 0; i < numTracks; ++i)
+        {
+            tracks[i]->clearAllSteps();
+            tracks[i]->setMuted(false);
+            tracks[i]->setSolo(false);
+        }
+    };
+
+    // Audio Settings button - opens device selector dialog
+    audioSettingsButton.setButtonText("Audio");
+    audioSettingsButton.setColour(juce::TextButton::buttonColourId, getDarkBackground());
+    audioSettingsButton.setColour(juce::TextButton::textColourOffId, getNeonCyan());
+    addAndMakeVisible(audioSettingsButton);
+    audioSettingsButton.onClick = [this] {
+        showAudioSettingsDialog();
+    };
 
     // BPM slider
     bpmSlider.setRange(60.0, 200.0, 1.0);
     bpmSlider.setValue(120.0);
     bpmSlider.setSliderStyle(juce::Slider::LinearHorizontal);
-    bpmSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 60, 30);
+    bpmSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 80, 36);
     bpmSlider.setColour(juce::Slider::thumbColourId, getNeonPink());
     bpmSlider.setColour(juce::Slider::trackColourId, juce::Colours::darkgrey);
     addAndMakeVisible(bpmSlider);
     bpmSlider.onValueChange = [this] {
         bpm.store(bpmSlider.getValue());
-        calculateSamplesPerStep();
+        audioEngine->setBPM(bpmSlider.getValue());
     };
 
     addAndMakeVisible(bpmLabel);
@@ -72,6 +99,23 @@ MainComponent::MainComponent()
     bpmLabel.setColour(juce::Label::textColourId, juce::Colours::white);
     addAndMakeVisible(bpmLabel);
     bpmLabel.attachToComponent(&bpmSlider, true);
+
+    // Master volume slider
+    masterVolumeSlider.setRange(0.0, 1.0, 0.01);
+    masterVolumeSlider.setValue(0.8);
+    masterVolumeSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    masterVolumeSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 80, 36);
+    masterVolumeSlider.setColour(juce::Slider::thumbColourId, getNeonCyan());
+    masterVolumeSlider.setColour(juce::Slider::trackColourId, juce::Colours::darkgrey);
+    addAndMakeVisible(masterVolumeSlider);
+    masterVolumeSlider.onValueChange = [this] {
+        audioEngine->setMasterVolume(static_cast<float>(masterVolumeSlider.getValue()));
+    };
+
+    addAndMakeVisible(masterVolumeLabel);
+    masterVolumeLabel.setText("Master", juce::dontSendNotification);
+    masterVolumeLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    masterVolumeLabel.attachToComponent(&masterVolumeSlider, true);
 
     // Loop length combo box
     loopLengthComboBox.addItem("16 Steps", 16);
@@ -84,21 +128,211 @@ MainComponent::MainComponent()
     loopLengthComboBox.setColour(juce::ComboBox::arrowColourId, getNeonCyan());
     addAndMakeVisible(loopLengthComboBox);
     loopLengthComboBox.onChange = [this] {
-        loopLength.store(loopLengthComboBox.getSelectedId());
-        lastPlayedStep = -1;
+        audioEngine->setLoopLength(loopLengthComboBox.getSelectedId());
     };
 
     addAndMakeVisible(loopLengthLabel);
     loopLengthLabel.setText("Loop", juce::dontSendNotification);
     loopLengthLabel.setColour(juce::Label::textColourId, juce::Colours::white);
-    loopLengthLabel.setFont(juce::Font(10.0f));
 
-    // Start GUI timer for playhead updates (30 FPS)
-    startTimerHz(30);
+    // Genre combo box for algorithmic generation
+    genreComboBox.addItem("Techno", 1);
+    genreComboBox.addItem("House", 2);
+    genreComboBox.addItem("Trap", 3);
+    genreComboBox.addItem("DnB", 4);
+    genreComboBox.addItem("Ambient", 5);
+    genreComboBox.addItem("Garage", 6);
+    genreComboBox.setSelectedId(1);
+    genreComboBox.setColour(juce::ComboBox::backgroundColourId, getDarkBackground());
+    genreComboBox.setColour(juce::ComboBox::textColourId, juce::Colours::white);
+    genreComboBox.setColour(juce::ComboBox::arrowColourId, getNeonPink());
+    addAndMakeVisible(genreComboBox);
 
-    calculateSamplesPerStep();
+    // Generate button
+    generateButton.setButtonText("Generate");
+    generateButton.setColour(juce::TextButton::buttonColourId, getNeonPink());
+    generateButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    addAndMakeVisible(generateButton);
+    generateButton.onClick = [this] {
+        if (audioEngine->isPlaying())
+            togglePlay();
+        patternGenerator->generateSong(static_cast<PatternGenerator::Genre>(genreComboBox.getSelectedId()));
+    };
 
-    setSize(1000, 600);
+    // Swing slider
+    swingSlider.setRange(0.0, 0.75, 0.01);
+    swingSlider.setValue(0.0);
+    swingSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    swingSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 70, 28);
+    swingSlider.setColour(juce::Slider::thumbColourId, getNeonCyan());
+    swingSlider.setColour(juce::Slider::trackColourId, juce::Colours::darkgrey);
+    addAndMakeVisible(swingSlider);
+    swingSlider.onValueChange = [this] {
+        audioEngine->setSwingAmount(static_cast<float>(swingSlider.getValue()));
+    };
+
+    addAndMakeVisible(swingLabel);
+    swingLabel.setText("Swing", juce::dontSendNotification);
+    swingLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    addAndMakeVisible(swingLabel);
+    swingLabel.attachToComponent(&swingSlider, true);
+
+    // Reverb slider
+    reverbSlider.setRange(0.0, 1.0, 0.01);
+    reverbSlider.setValue(0.3);
+    reverbSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    reverbSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 70, 28);
+    reverbSlider.setColour(juce::Slider::thumbColourId, getNeonPink());
+    reverbSlider.setColour(juce::Slider::trackColourId, juce::Colours::darkgrey);
+    addAndMakeVisible(reverbSlider);
+    reverbSlider.onValueChange = [this] {
+        audioEngine->setReverbWetLevel(static_cast<float>(reverbSlider.getValue()));
+    };
+
+    addAndMakeVisible(reverbLabel);
+    reverbLabel.setText("Reverb", juce::dontSendNotification);
+    reverbLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    addAndMakeVisible(reverbLabel);
+    reverbLabel.attachToComponent(&reverbSlider, true);
+
+    // Rhythm Explorer toggle button
+    rhythmExplorerButton.setButtonText("Rhythm Explorer");
+    rhythmExplorerButton.setColour(juce::TextButton::buttonColourId, getNeonPink().withAlpha(0.7f));
+    rhythmExplorerButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    rhythmExplorerButton.setClickingTogglesState(true);
+    addAndMakeVisible(rhythmExplorerButton);
+    rhythmExplorerButton.onClick = [this] {
+        rhythmExplorerVisible = rhythmExplorerButton.getToggleState();
+        if (rhythmExplorerVisible)
+        {
+            rhythmExplorer->setVisible(true);
+            addAndMakeVisible(rhythmExplorer.get());
+        }
+        else
+        {
+            rhythmExplorer->setVisible(false);
+            removeChildComponent(rhythmExplorer.get());
+        }
+        resized();
+    };
+
+    // Create Rhythm Explorer panel
+    rhythmExplorer = std::make_unique<RhythmExplorer>();
+    rhythmExplorer->setVisible(false);
+
+    // Connect RhythmExplorer to tracks
+    rhythmExplorer->onApplyPattern = [this](int trackIndex, const std::vector<int>& steps, bool clearFirst) {
+        if (trackIndex >= 0 && trackIndex < numTracks)
+        {
+            if (clearFirst)
+                tracks[trackIndex]->clearAllSteps();
+
+            for (int step : steps)
+            {
+                tracks[trackIndex]->setStepActive(step, true);
+            }
+        }
+    };
+
+    rhythmExplorer->onApplyFill = [this](int trackIndex, const std::vector<int>& steps) {
+        if (trackIndex >= 0 && trackIndex < numTracks)
+        {
+            // Apply fill without clearing existing pattern
+            for (int step : steps)
+            {
+                if (step >= 0 && step < 64)
+                    tracks[trackIndex]->setStepActive(step, true);
+            }
+        }
+    };
+
+    // Track selection - click on track's combo box to select for RhythmExplorer
+    for (int i = 0; i < numTracks; ++i)
+    {
+        // Store capture by value
+        const int capturedIdx = i;
+        tracks[i]->getComboBox().onChange = [this, capturedIdx] {
+            selectedTrackForRhythm = capturedIdx;
+            if (rhythmExplorer)
+                rhythmExplorer->setTargetTrack(capturedIdx);
+            if (melodyPanel)
+                melodyPanel->setTargetTrack(capturedIdx);
+
+            // Also load the sample
+            juce::String category = tracks[capturedIdx]->getSelectedCategory();
+            if (category.isNotEmpty() && sampleDirectory.exists())
+            {
+                tracks[capturedIdx]->loadSampleForCategory(category, sampleDirectory);
+            }
+        };
+    }
+
+    // Melody Workstation toggle button
+    melodyWorkstationButton.setButtonText("Melody WS");
+    melodyWorkstationButton.setColour(juce::TextButton::buttonColourId, getNeonPink().withAlpha(0.7f));
+    melodyWorkstationButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    melodyWorkstationButton.setClickingTogglesState(true);
+    addAndMakeVisible(melodyWorkstationButton);
+    melodyWorkstationButton.onClick = [this] {
+        melodyPanelVisible = melodyWorkstationButton.getToggleState();
+        if (melodyPanelVisible)
+        {
+            melodyPanel->setVisible(true);
+            addAndMakeVisible(melodyPanel.get());
+        }
+        else
+        {
+            melodyPanel->setVisible(false);
+            removeChildComponent(melodyPanel.get());
+        }
+        resized();
+    };
+
+    // Create Melody Workstation panel
+    melodyPanel = std::make_unique<MelodyPanel>();
+    melodyPanel->setVisible(false);
+
+    // Connect MelodyPanel to tracks
+    melodyPanel->onApplyMelody = [this](int trackIndex, const std::vector<std::pair<int, int>>& stepPitches) {
+        if (trackIndex >= 0 && trackIndex < numTracks)
+        {
+            // Clear existing steps first
+            tracks[trackIndex]->clearAllSteps();
+
+            // Apply melody steps with pitch offsets
+            for (const auto& [step, pitchOffset] : stepPitches)
+            {
+                if (step >= 0 && step < 64)
+                {
+                    StepModifierState state;
+                    state.active = true;
+                    state.hasPitchLock = (pitchOffset != 0);
+                    state.pitchLock = pitchOffset;
+                    tracks[trackIndex]->setStepState(step, state);
+                }
+            }
+        }
+    };
+
+    // Start GUI timer for playhead updates (15 FPS - sufficient for visual feedback)
+    startTimerHz(15);
+
+    // Initialize pattern generator
+    patternGenerator = std::make_unique<PatternGenerator>(
+        tracks,
+        sampleCategories,
+        sampleDirectory,
+        bpm,
+        bpmSlider,
+        [this] {
+            bpm.store(bpmSlider.getValue());
+            audioEngine->setBPM(bpmSlider.getValue());
+        }
+    );
+
+    // Set window size optimized for 1440p (2560x1440)
+    // Using large size that fills most of screen
+    setSize(2400, 1300);
 }
 
 MainComponent::~MainComponent()
@@ -106,167 +340,19 @@ MainComponent::~MainComponent()
     shutdownAudio();
 }
 
-void MainComponent::prepareToPlay(int samplesPerBlockExpected, double newSampleRate)
+void MainComponent::prepareToPlay(int samplesPerBlockExpected, double sampleRate)
 {
-    currentSampleRate = newSampleRate;
-
-    // Prepare all track synthesizers and DSP filters
-    for (auto& track : tracks)
-    {
-        track->getSynthesiser().setCurrentPlaybackSampleRate(newSampleRate);
-        track->prepareAudio(newSampleRate, samplesPerBlockExpected);
-    }
-    calculateSamplesPerStep();
+    audioEngine->prepareToPlay(samplesPerBlockExpected, sampleRate);
 }
 
 void MainComponent::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill)
 {
-    bufferToFill.clearActiveBufferRegion();
-
-    const int samplesPerStep = this->samplesPerStep.load();
-    const double sampleRateValue = currentSampleRate;
-    const bool localIsPlaying = this->isPlaying;
-
-    // Separate MIDI buffer for each track to prevent cross-talk
-    std::array<juce::MidiBuffer, numTracks> trackMidiBuffers;
-
-    if (localIsPlaying && samplesPerStep > 0)
-    {
-        samplePosition.fetch_add(bufferToFill.numSamples);
-
-        // Use dynamic loop length (16, 32, 48, or 64 steps)
-        const int loopLen = loopLength.load();
-        const int calculatedCurrentStep = (int)(samplePosition.load() / samplesPerStep) % loopLen;
-
-        const bool isNewStep = (calculatedCurrentStep != lastPlayedStep);
-
-        if (isNewStep)
-        {
-            // Increment global loop counter for Slow (/) modifier
-            if (calculatedCurrentStep == 0)
-                globalLoopCounter++;
-
-            for (int trackIdx = 0; trackIdx < numTracks; ++trackIdx)
-            {
-                if (tracks[trackIdx]->isStepActive(calculatedCurrentStep))
-                {
-                    // Get step state with modifiers
-                    const StepModifierState stepState = tracks[trackIdx]->getStepState(calculatedCurrentStep);
-
-                    // Get control values from track
-                    const float trackVolume = tracks[trackIdx]->getVolume();
-                    const int trackPitch = tracks[trackIdx]->getPitch();
-
-                    // Calculate velocity with volume
-                    const juce::uint8 velocity = static_cast<juce::uint8>(trackVolume * 127);
-
-                    // Calculate MIDI note with pitch offset
-                    const int midiNote = 60 + trackPitch;
-
-                    // Handle different modifier types
-                    if (stepState.modifierType == '*')
-                    {
-                        // Speed (*): Ratcheting logic - trigger modifierValue times within step
-                        const int samplesPerRatchetStep = samplesPerStep / stepState.modifierValue;
-                        for (int ratchetIndex = 0; ratchetIndex < stepState.modifierValue; ++ratchetIndex)
-                        {
-                            const int sampleOffset = ratchetIndex * samplesPerRatchetStep;
-                            // Add event at correct offset within this buffer
-                            juce::MidiMessage midiMessage =
-                                juce::MidiMessage::noteOn(1, midiNote, velocity);
-                            trackMidiBuffers[trackIdx].addEvent(midiMessage, sampleOffset);
-                        }
-                    }
-                    else if (stepState.modifierType == '/')
-                    {
-                        // Slow (/): Only trigger on every Nth cycle
-                        const int cycleCheck = (globalLoopCounter > 0) ? (globalLoopCounter - 1) : 0;
-                        if (cycleCheck % stepState.modifierValue == 0)
-                        {
-                            juce::MidiMessage midiMessage =
-                                juce::MidiMessage::noteOn(1, midiNote, velocity);
-                            trackMidiBuffers[trackIdx].addEvent(midiMessage, 0);
-                        }
-                    }
-                    else if (stepState.modifierType == '@')
-                    {
-                        // Elongate (@): Trigger normally with elongated release/decay
-                        juce::MidiMessage midiMessage =
-                            juce::MidiMessage::noteOn(1, midiNote, velocity);
-                        trackMidiBuffers[trackIdx].addEvent(midiMessage, 0);
-                        // Note: ADSR elongation handled in TrackComponent ADSR
-                    }
-                    else if (stepState.modifierType == '!')
-                    {
-                        // Replicate (!): Trigger and force repeat on next (modifierValue - 1) steps
-                        juce::MidiMessage midiMessage =
-                            juce::MidiMessage::noteOn(1, midiNote, velocity);
-                        trackMidiBuffers[trackIdx].addEvent(midiMessage, 0);
-
-                        // Also trigger on upcoming steps
-                        const int repOffset = stepState.modifierValue - 1;
-                        if (repOffset > 0)
-                        {
-                            for (int repStep = 1; repStep <= repOffset; ++repStep)
-                            {
-                                const int targetStep = (calculatedCurrentStep + repStep) % loopLen;
-                                const float trackVolume = tracks[trackIdx]->getVolume();
-                                const int trackPitch = tracks[trackIdx]->getPitch();
-                                const juce::uint8 repVelocity = static_cast<juce::uint8>(trackVolume * 127);
-                                const int midiNoteRep = 60 + trackPitch;
-
-                                // Calculate when in the future this trigger should happen
-                                const int samplesInFuture = repStep * samplesPerStep;
-                                if (samplesInFuture < bufferToFill.numSamples)
-                                {
-                                    juce::MidiMessage repMessage =
-                                        juce::MidiMessage::noteOn(1, midiNoteRep, repVelocity);
-                                    trackMidiBuffers[trackIdx].addEvent(repMessage, samplesInFuture);
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        // Normal: Single trigger
-                        juce::MidiMessage midiMessage =
-                            juce::MidiMessage::noteOn(1, midiNote, velocity);
-                        trackMidiBuffers[trackIdx].addEvent(midiMessage, 0);
-                    }
-                }
-            }
-
-            lastPlayedStep = calculatedCurrentStep;
-        }
-    }
-
-    // Render each track with its own MIDI buffer only
-    // Process through DSP filters
-    for (int trackIdx = 0; trackIdx < numTracks; ++trackIdx)
-    {
-        // Create temporary buffer for this track
-        juce::AudioBuffer<float> tempBuffer(
-            bufferToFill.buffer->getNumChannels(),
-            bufferToFill.numSamples);
-        tempBuffer.clear();
-
-        // Render synth to temp buffer
-        tracks[trackIdx]->getSynthesiser().renderNextBlock(tempBuffer,
-            trackMidiBuffers[trackIdx], 0, bufferToFill.numSamples);
-
-        // Apply DSP filter to temp buffer
-        tracks[trackIdx]->processAudioBlock(tempBuffer);
-
-        // Add to main output buffer
-        for (int channel = 0; channel < bufferToFill.buffer->getNumChannels(); ++channel)
-        {
-            bufferToFill.buffer->addFrom(channel, 0, tempBuffer, channel, 0, bufferToFill.numSamples);
-        }
-    }
+    audioEngine->getNextAudioBlock(bufferToFill);
 }
 
 void MainComponent::releaseResources()
 {
+    audioEngine->releaseResources();
 }
 
 void MainComponent::paint(juce::Graphics& g)
@@ -276,98 +362,200 @@ void MainComponent::paint(juce::Graphics& g)
 
 void MainComponent::resized()
 {
-    auto area = getLocalBounds().reduced(15);
+    // Set flag to prevent timer updates during resize
+    isResizing = true;
 
-    auto controlArea = area.removeFromTop(60);
+    auto bounds = getLocalBounds();
 
-    auto buttonArea = controlArea.removeFromLeft(150);
-    playButton.setBounds(buttonArea.removeFromTop(30).reduced(2, 2));
-    stopButton.setBounds(buttonArea.removeFromTop(30).reduced(2, 2));
+    // Early return for invalid bounds
+    if (bounds.getWidth() <= 100 || bounds.getHeight() <= 100)
+    {
+        isResizing = false;
+        return;
+    }
 
-    auto folderArea = controlArea.removeFromLeft(200);
-    setFolderButton.setBounds(folderArea.removeFromTop(30).reduced(2, 2));
-    folderLabel.setBounds(folderArea.removeFromTop(30).reduced(2, 2));
+    auto area = bounds.reduced(10);
 
-    auto sliderArea = controlArea;
-    bpmSlider.setBounds(sliderArea.removeFromLeft(120).reduced(5, 10));
-    sliderArea.removeFromLeft(5);
-    loopLengthComboBox.setBounds(sliderArea.removeFromLeft(100).reduced(5, 10));
-    sliderArea.removeFromLeft(5);
-    loopLengthLabel.setBounds(sliderArea.removeFromLeft(35).reduced(2, 10));
+    // Reserve space for side panels (RhythmExplorer and/or MelodyPanel)
+    const int rhythmExplorerWidth = 280;
+    const int melodyPanelWidth = 350;
+    juce::Rectangle<int> rhythmExplorerArea;
+    juce::Rectangle<int> melodyPanelArea;
 
-    const int trackHeight = (area.getHeight() - (numTracks - 1) * 10) / numTracks;
+    if (rhythmExplorerVisible && melodyPanelVisible)
+    {
+        // Both visible - split the right side
+        int totalWidth = rhythmExplorerWidth + melodyPanelWidth + 20;
+        auto rightArea = area.removeFromRight(totalWidth);
+        melodyPanelArea = rightArea.removeFromRight(melodyPanelWidth);
+        rightArea.removeFromRight(10); // Gap
+        rhythmExplorerArea = rightArea;
+    }
+    else if (rhythmExplorerVisible)
+    {
+        rhythmExplorerArea = area.removeFromRight(rhythmExplorerWidth);
+        area.removeFromRight(10); // Gap
+    }
+    else if (melodyPanelVisible)
+    {
+        melodyPanelArea = area.removeFromRight(melodyPanelWidth);
+        area.removeFromRight(10); // Gap
+    }
+
+    // Control area - TWO ROWS for better spacing
+    const int controlHeight = 90;
+    auto controlArea = area.removeFromTop(controlHeight);
+
+    // Split into two rows
+    auto topRow = controlArea.removeFromTop(45);
+    auto bottomRow = controlArea;
+
+    // === TOP ROW: Play, Stop, Clear, Folder, BPM, Master ===
+    const int rowY = 5;
+    const int btnHeight = 35;
+    const int sliderHeight = 30;
+    int xPos = 10;
+
+    // Play/Stop buttons
+    playButton.setBounds(xPos, rowY, 70, btnHeight);
+    xPos += 75;
+    stopButton.setBounds(xPos, rowY, 70, btnHeight);
+    xPos += 75;
+
+    // Clear All button
+    clearAllButton.setBounds(xPos, rowY, 80, btnHeight);
+    xPos += 85;
+
+    // Folder button and label
+    setFolderButton.setBounds(xPos, rowY, 160, btnHeight);
+    xPos += 165;
+    folderLabel.setBounds(xPos, rowY + 8, 150, 20);
+    xPos += 160;
+
+    // BPM slider with generous width
+    bpmLabel.setBounds(xPos, rowY + 5, 35, 20);
+    xPos += 35;
+    bpmSlider.setBounds(xPos, rowY + 2, 140, sliderHeight);
+    xPos += 150;
+
+    // Master Volume slider
+    masterVolumeLabel.setBounds(xPos, rowY + 5, 50, 20);
+    xPos += 50;
+    masterVolumeSlider.setBounds(xPos, rowY + 2, 120, sliderHeight);
+
+    // Audio Settings button
+    xPos += 130;
+    audioSettingsButton.setBounds(xPos, rowY, 60, btnHeight);
+
+    // === BOTTOM ROW: Loop, Genre, Generate, Swing, Reverb, RhythmExplorer ===
+    xPos = 10;
+    const int bottomY = 50;
+
+    // Loop length combo with label
+    loopLengthLabel.setBounds(xPos, bottomY + 5, 35, 20);
+    xPos += 35;
+    loopLengthComboBox.setBounds(xPos, bottomY + 2, 100, sliderHeight);
+    xPos += 110;
+
+    // Genre combo
+    genreComboBox.setBounds(xPos, bottomY + 2, 120, sliderHeight);
+    xPos += 130;
+
+    // Generate button
+    generateButton.setBounds(xPos, bottomY, 130, btnHeight);
+    xPos += 140;
+
+    // Swing slider
+    swingLabel.setBounds(xPos, bottomY + 5, 40, 20);
+    xPos += 40;
+    swingSlider.setBounds(xPos, bottomY + 2, 120, sliderHeight);
+    xPos += 130;
+
+    // Reverb slider
+    reverbLabel.setBounds(xPos, bottomY + 5, 45, 20);
+    xPos += 45;
+    reverbSlider.setBounds(xPos, bottomY + 2, 120, sliderHeight);
+
+    // Rhythm Explorer toggle button (if space allows)
+    xPos += 130;
+    if (xPos + 120 < area.getWidth())
+    {
+        rhythmExplorerButton.setBounds(xPos, bottomY, 120, btnHeight);
+    }
+
+    // Melody Workstation toggle button
+    xPos += 125;
+    if (xPos + 90 < area.getWidth())
+    {
+        melodyWorkstationButton.setBounds(xPos, bottomY, 90, btnHeight);
+    }
+
+    // === DYNAMIC TRACK HEIGHTS based on expanded state ===
+    const int trackGap = 5;
+    const int expandedHeight = 165;  // Header(40) + Knobs(50) + StepRow1(35) + StepRow2(35) + margin
+    const int collapsedHeight = 45;
+
     for (int i = 0; i < numTracks; ++i)
     {
+        const int trackHeight = tracks[i]->getIsExpanded() ? expandedHeight : collapsedHeight;
         tracks[i]->setBounds(area.removeFromTop(trackHeight));
-        if (i < numTracks - 1)
-            area.removeFromTop(10);
+        area.removeFromTop(trackGap);
     }
+
+    // === RHYTHM EXPLORER PANEL ===
+    if (rhythmExplorerVisible && rhythmExplorerArea.getWidth() > 0)
+    {
+        rhythmExplorer->setBounds(rhythmExplorerArea.reduced(5));
+    }
+
+    // === MELODY WORKSTATION PANEL ===
+    if (melodyPanelVisible && melodyPanelArea.getWidth() > 0)
+    {
+        melodyPanel->setBounds(melodyPanelArea.reduced(5));
+    }
+
+    isResizing = false;
 }
 
 void MainComponent::timerCallback()
 {
-    updatePlayhead();
+    // Skip updates during resize to prevent UI freeze
+    if (!isResizing)
+        updatePlayhead();
 }
 
 void MainComponent::updatePlayhead()
 {
-    const int steps = samplesPerStep.load();
-    const int loopLen = loopLength.load();
-    const int step = (steps > 0) ? (int)(samplePosition.load() / steps) % loopLen : 0;
+    const int steps = audioEngine->getSamplesPerStep();
 
-    for (auto& track : tracks)
+    // Per-track playhead calculation for polyrhythms
+    for (int i = 0; i < numTracks; ++i)
     {
-        track->updatePlayhead(step, isPlaying);
+        const int trackLoopLen = tracks[i]->getTrackLoopLength();
+        const int step = (steps > 0) ? (int)(audioEngine->getSamplePosition() / steps) % trackLoopLen : 0;
+        tracks[i]->updatePlayhead(step, audioEngine->isPlaying());
     }
 }
 
 void MainComponent::togglePlay()
 {
-    isPlaying = !isPlaying;
-    playButton.setButtonText(isPlaying ? "Pause" : "Play");
-
-    if (!isPlaying)
+    if (audioEngine->isPlaying())
     {
-        // Reset global loop counter when stopping
-        globalLoopCounter = 0;
-
-        // Send allNotesOff to stop any currently playing sounds
-        for (auto& track : tracks)
-        {
-            track->getSynthesiser().allNotesOff(0, false);
-        }
-
-        samplePosition.store(0);
-        lastPlayedStep = -1;
-        updatePlayhead();
+        audioEngine->stopPlayback();
+        playButton.setButtonText("Play");
+    }
+    else
+    {
+        audioEngine->startPlayback();
+        playButton.setButtonText("Pause");
     }
 }
 
 void MainComponent::stopPlayback()
 {
-    isPlaying = false;
-
-    // Reset global loop counter when stopping
-    globalLoopCounter = 0;
-
-    // Send allNotesOff to stop any currently playing sounds
-    for (auto& track : tracks)
-    {
-        track->getSynthesiser().allNotesOff(0, false);
-    }
-
-    samplePosition.store(0);
-    lastPlayedStep = -1;
+    audioEngine->stopPlayback();
     playButton.setButtonText("Play");
     updatePlayhead();
-}
-
-void MainComponent::calculateSamplesPerStep()
-{
-    const double bpmValue = bpm.load();
-    const double secondsPerBeat = 60.0 / bpmValue;
-    const double secondsPerStep = secondsPerBeat / 4.0;
-    samplesPerStep.store(static_cast<int>(currentSampleRate * secondsPerStep));
 }
 
 void MainComponent::openFolderChooser()
@@ -392,17 +580,14 @@ void MainComponent::openFolderChooser()
 
 void MainComponent::autoDetectSampleDirectory()
 {
-    // Get the directory where the executable resides
     juce::File exeDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory();
 
-    // Try multiple search locations
     juce::StringArray searchDirs = {
         "Dirt-Samples-master",
         "Dirt-Samples",
         "samples"
     };
 
-    // Try current directory first
     for (const auto& dirName : searchDirs)
     {
         juce::File candidate = exeDir.getChildFile(dirName);
@@ -416,7 +601,6 @@ void MainComponent::autoDetectSampleDirectory()
         }
     }
 
-    // Try two directories up (for build/Release/ structure)
     juce::File parentDir = exeDir.getParentDirectory();
     if (parentDir.exists())
     {
@@ -434,7 +618,6 @@ void MainComponent::autoDetectSampleDirectory()
         }
     }
 
-    // Try three directories up
     juce::File grandParentDir = parentDir.getParentDirectory();
     if (grandParentDir.exists())
     {
@@ -452,7 +635,6 @@ void MainComponent::autoDetectSampleDirectory()
         }
     }
 
-    // No sample directory found - keep manual button as fallback
     folderLabel.setText("No folder found - Click 'Set SuperDirt Folder'", juce::dontSendNotification);
 }
 
@@ -487,4 +669,33 @@ void MainComponent::loadPendingSamples()
         }
     }
     pendingSampleLoads.clear();
+}
+
+void MainComponent::showAudioSettingsDialog()
+{
+    // Create audio device selector component
+    auto* deviceSelector = new juce::AudioDeviceSelectorComponent(
+        deviceManager,           // AudioDeviceManager from AudioAppComponent
+        0,                       // min audio input channels
+        2,                       // max audio input channels
+        0,                       // min audio output channels
+        2,                       // max audio output channels
+        false,                   // show MIDI input options
+        false,                   // show MIDI output options
+        false,                   // show muted input options
+        false                    // only show current device's input channels
+    );
+
+    deviceSelector->setSize(450, 280);
+
+    // Create and show dialog
+    juce::DialogWindow::LaunchOptions options;
+    options.content.setOwned(deviceSelector);
+    options.dialogTitle = "Audio Settings - Select Output Device";
+    options.dialogBackgroundColour = getDarkBackground();
+    options.escapeKeyTriggersCloseButton = true;
+    options.useNativeTitleBar = true;
+    options.resizable = false;
+
+    options.launchAsync();
 }

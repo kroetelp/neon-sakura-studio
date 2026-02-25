@@ -1,20 +1,53 @@
 #include "TrackComponent.h"
 
-// Custom SamplerVoice that properly wraps JUCE's SamplerSound
-class CustomSamplerVoice : public juce::SamplerVoice
+// StepButton neon glow rendering
+void StepButton::paintButton(juce::Graphics& g, bool, bool)
 {
-public:
-    CustomSamplerVoice() = default;
-};
+    // Create rounded rectangle path with margin for glow
+    auto bounds = getLocalBounds().toFloat();
+    juce::Path p;
+    p.addRoundedRectangle(bounds.reduced(8.0f), 4.0f);
+
+    // Get the current button color
+    juce::Colour baseColor = findColour(juce::TextButton::buttonColourId);
+
+    // Render neon glow if this is an active step
+    if (isActiveStep)
+    {
+        melatonin::DropShadow glow(baseColor, 8, {0, 0});
+        glow.render(g, p);
+    }
+
+    // Draw the actual button
+    g.setColour(baseColor);
+    g.fillPath(p);
+
+    // Draw button text
+    g.setColour(juce::Colours::white);
+    g.setFont(10.0f);
+    g.drawText(getButtonText(), getLocalBounds(), juce::Justification::centred, false);
+}
 
 TrackComponent::TrackComponent(int trackIndex_, juce::AudioFormatManager& formatManager_)
-    : trackIndex(trackIndex_), formatManager(formatManager_)
+    : trackIndex(trackIndex_), audioProcessor(formatManager_, model)
 {
     // Track label
     addAndMakeVisible(trackLabel);
     trackLabel.setText("Track " + juce::String(trackIndex + 1), juce::dontSendNotification);
     trackLabel.setColour(juce::Label::textColourId, juce::Colours::white);
     trackLabel.setFont(juce::Font(14.0f, juce::Font::bold));
+
+    // Expand/Collapse button
+    addAndMakeVisible(expandButton);
+    expandButton.setButtonText("-");
+    expandButton.setColour(juce::TextButton::buttonColourId, getDarkBackground());
+    expandButton.setColour(juce::TextButton::textColourOffId, getNeonCyan());
+    expandButton.onClick = [this] {
+        model.setIsExpanded(!model.getIsExpanded());
+        expandButton.setButtonText(model.getIsExpanded() ? "-" : "+");
+        if (onStateChange)
+            onStateChange();
+    };
 
     // Category dropdown
     addAndMakeVisible(categoryComboBox);
@@ -41,9 +74,61 @@ TrackComponent::TrackComponent(int trackIndex_, juce::AudioFormatManager& format
     sampleIndexLabel.setColour(juce::Label::textColourId, juce::Colours::white);
     sampleIndexLabel.setFont(juce::Font(10.0f));
 
+    // Mute button
+    addAndMakeVisible(muteButton);
+    muteButton.setButtonText("M");
+    muteButton.setClickingTogglesState(true);
+    muteButton.setColour(juce::TextButton::buttonColourId, getDarkBackground());
+    muteButton.setColour(juce::TextButton::buttonOnColourId, juce::Colours::red);
+    muteButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    muteButton.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    muteButton.onClick = [this] {
+        audioProcessor.setMuted(muteButton.getToggleState());
+    };
+
+    // Solo button
+    addAndMakeVisible(soloButton);
+    soloButton.setButtonText("S");
+    soloButton.setClickingTogglesState(true);
+    soloButton.setColour(juce::TextButton::buttonColourId, getDarkBackground());
+    soloButton.setColour(juce::TextButton::buttonOnColourId, juce::Colours::yellow);
+    soloButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    soloButton.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
+    soloButton.onClick = [this] {
+        audioProcessor.setSolo(soloButton.getToggleState());
+    };
+
+    // Clear button
+    addAndMakeVisible(clearButton);
+    clearButton.setButtonText("C");
+    clearButton.setColour(juce::TextButton::buttonColourId, getDarkBackground());
+    clearButton.setColour(juce::TextButton::textColourOffId, getNeonCyan());
+    clearButton.onClick = [this] {
+        clearAllSteps();
+    };
+
+    // Loop Length slider for polyrhythms
+    addAndMakeVisible(loopLengthSlider);
+    loopLengthSlider.setRange(1.0, 64.0, 1.0);
+    loopLengthSlider.setValue(16.0);
+    loopLengthSlider.setSliderStyle(juce::Slider::IncDecButtons);
+    loopLengthSlider.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 30, 20);
+    loopLengthSlider.setColour(juce::Slider::thumbColourId, getNeonCyan());
+    loopLengthSlider.setColour(juce::Slider::trackColourId, juce::Colours::darkgrey);
+    loopLengthSlider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white);
+    loopLengthSlider.setColour(juce::Slider::textBoxBackgroundColourId, getDarkBackground());
+    loopLengthSlider.onValueChange = [this] {
+        model.setTrackLoopLength(static_cast<int>(loopLengthSlider.getValue()));
+    };
+
+    addAndMakeVisible(loopLengthLabel);
+    loopLengthLabel.setText("Steps", juce::dontSendNotification);
+    loopLengthLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    loopLengthLabel.setFont(juce::Font(10.0f));
+
     // Bank selector buttons
     const char bankNames[4] = {'A', 'B', 'C', 'D'};
-    for (int i = 0; i < numBanks; ++i)
+    for (int i = 0; i < TrackModel::numBanks; ++i)
     {
         bankButtons[i] = std::make_unique<juce::TextButton>();
         bankButtons[i]->setButtonText(juce::String(bankNames[i]));
@@ -54,7 +139,6 @@ TrackComponent::TrackComponent(int trackIndex_, juce::AudioFormatManager& format
         bankButtons[i]->setColour(juce::TextButton::textColourOnId, juce::Colours::white);
         addAndMakeVisible(bankButtons[i].get());
 
-        // Set bank button click handler
         const int bankIndex = i;
         bankButtons[i]->onClick = [this, bankIndex] { setBank(bankIndex); };
     }
@@ -68,106 +152,54 @@ TrackComponent::TrackComponent(int trackIndex_, juce::AudioFormatManager& format
     bankLabel.setColour(juce::Label::textColourId, juce::Colours::white);
     bankLabel.setFont(juce::Font(8.0f));
 
-    // Volume knob
-    addAndMakeVisible(volumeSlider);
-    volumeSlider.setRange(0.0, 1.0, 0.01);
-    volumeSlider.setValue(0.8);
-    volumeSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    volumeSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-    volumeSlider.setColour(juce::Slider::thumbColourId, getNeonPink());
-    volumeSlider.setColour(juce::Slider::rotarySliderFillColourId, getNeonPink().withAlpha(0.5f));
-    volumeSlider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colours::darkgrey);
-    volumeSlider.onValueChange = [this] {
-        volume.store(static_cast<float>(volumeSlider.getValue()));
+    // Control sliders (Volume, Pitch, Attack, Decay, Cutoff)
+    const char* knobNames[5] = {"Vol", "Pit", "Atk", "Dec", "Cut"};
+    const juce::Colour knobColors[5] = {getNeonPink(), getNeonCyan(), getNeonCyan(), getNeonPink(), getNeonPink()};
+    const double knobRanges[5][3] = {{0.0, 1.0, 0.01}, {-12.0, 12.0, 1.0}, {0.0, 2.0, 0.01}, {0.01, 2.0, 0.01}, {20.0, 20000.0, 1.0}};
+    const double knobDefaults[5] = {0.8, 0.0, 0.0, 0.5, 20000.0};
+
+    for (int i = 0; i < 5; ++i)
+    {
+        controlSliders[i] = std::make_unique<juce::Slider>();
+        controlSliders[i]->setRange(knobRanges[i][0], knobRanges[i][1], knobRanges[i][2]);
+        controlSliders[i]->setValue(knobDefaults[i]);
+        controlSliders[i]->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+        controlSliders[i]->setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+        controlSliders[i]->setColour(juce::Slider::thumbColourId, knobColors[i]);
+        controlSliders[i]->setColour(juce::Slider::rotarySliderFillColourId, knobColors[i].withAlpha(0.5f));
+        controlSliders[i]->setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colours::darkgrey);
+        addAndMakeVisible(controlSliders[i].get());
+
+        controlLabels[i] = std::make_unique<juce::Label>();
+        controlLabels[i]->setText(knobNames[i], juce::dontSendNotification);
+        controlLabels[i]->setColour(juce::Label::textColourId, juce::Colours::white);
+        controlLabels[i]->setFont(juce::Font(10.0f));
+        controlLabels[i]->setJustificationType(juce::Justification::centred);
+        addAndMakeVisible(controlLabels[i].get());
+    }
+
+    // Cutoff needs logarithmic skew
+    controlSliders[4]->setSkewFactorFromMidPoint(1000.0);
+
+    // Slider callbacks
+    controlSliders[0]->onValueChange = [this] {
+        audioProcessor.setVolume(static_cast<float>(controlSliders[0]->getValue()));
+    };
+    controlSliders[1]->onValueChange = [this] {
+        audioProcessor.setPitch(static_cast<int>(controlSliders[1]->getValue()));
+    };
+    controlSliders[2]->onValueChange = [this] {
+        audioProcessor.setAttack(static_cast<float>(controlSliders[2]->getValue()));
+    };
+    controlSliders[3]->onValueChange = [this] {
+        audioProcessor.setDecay(static_cast<float>(controlSliders[3]->getValue()));
+    };
+    controlSliders[4]->onValueChange = [this] {
+        audioProcessor.setCutoff(static_cast<float>(controlSliders[4]->getValue()));
     };
 
-    addAndMakeVisible(volumeLabel);
-    volumeLabel.setText("Vol", juce::dontSendNotification);
-    volumeLabel.setColour(juce::Label::textColourId, juce::Colours::white);
-    volumeLabel.setFont(juce::Font(10.0f));
-    volumeLabel.setJustificationType(juce::Justification::centred);
-
-    // Pitch knob
-    addAndMakeVisible(pitchSlider);
-    pitchSlider.setRange(-12.0, 12.0, 1.0);
-    pitchSlider.setValue(0.0);
-    pitchSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    pitchSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-    pitchSlider.setColour(juce::Slider::thumbColourId, getNeonCyan());
-    pitchSlider.setColour(juce::Slider::rotarySliderFillColourId, getNeonCyan().withAlpha(0.5f));
-    pitchSlider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colours::darkgrey);
-    pitchSlider.onValueChange = [this] {
-        pitch.store(static_cast<int>(pitchSlider.getValue()));
-    };
-
-    addAndMakeVisible(pitchLabel);
-    pitchLabel.setText("Pit", juce::dontSendNotification);
-    pitchLabel.setColour(juce::Label::textColourId, juce::Colours::white);
-    pitchLabel.setFont(juce::Font(10.0f));
-    pitchLabel.setJustificationType(juce::Justification::centred);
-
-    // Attack knob
-    addAndMakeVisible(attackSlider);
-    attackSlider.setRange(0.0, 2.0, 0.01);
-    attackSlider.setValue(0.0);
-    attackSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    attackSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-    attackSlider.setColour(juce::Slider::thumbColourId, getNeonCyan());
-    attackSlider.setColour(juce::Slider::rotarySliderFillColourId, getNeonCyan().withAlpha(0.5f));
-    attackSlider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colours::darkgrey);
-    attackSlider.onValueChange = [this] {
-        attack.store(static_cast<float>(attackSlider.getValue()));
-        updateDecayEnvelope();
-    };
-
-    addAndMakeVisible(attackLabel);
-    attackLabel.setText("Atk", juce::dontSendNotification);
-    attackLabel.setColour(juce::Label::textColourId, juce::Colours::white);
-    attackLabel.setFont(juce::Font(10.0f));
-    attackLabel.setJustificationType(juce::Justification::centred);
-
-    // Decay knob
-    addAndMakeVisible(decaySlider);
-    decaySlider.setRange(0.01, 2.0, 0.01);
-    decaySlider.setValue(0.5);
-    decaySlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    decaySlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-    decaySlider.setColour(juce::Slider::thumbColourId, getNeonPink());
-    decaySlider.setColour(juce::Slider::rotarySliderFillColourId, getNeonPink().withAlpha(0.5f));
-    decaySlider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colours::darkgrey);
-    decaySlider.onValueChange = [this] {
-        decay.store(static_cast<float>(decaySlider.getValue()));
-        updateDecayEnvelope();
-    };
-
-    addAndMakeVisible(decayLabel);
-    decayLabel.setText("Dec", juce::dontSendNotification);
-    decayLabel.setColour(juce::Label::textColourId, juce::Colours::white);
-    decayLabel.setFont(juce::Font(10.0f));
-    decayLabel.setJustificationType(juce::Justification::centred);
-
-    // Cutoff knob
-    addAndMakeVisible(cutoffSlider);
-    cutoffSlider.setRange(20.0, 20000.0, 1.0);
-    cutoffSlider.setValue(20000.0);
-    cutoffSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    cutoffSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-    cutoffSlider.setSkewFactorFromMidPoint(1000.0);  // Logarithmic feel
-    cutoffSlider.setColour(juce::Slider::thumbColourId, getNeonPink());
-    cutoffSlider.setColour(juce::Slider::rotarySliderFillColourId, getNeonPink().withAlpha(0.5f));
-    cutoffSlider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colours::darkgrey);
-    cutoffSlider.onValueChange = [this] {
-        cutoff.store(static_cast<float>(cutoffSlider.getValue()));
-    };
-
-    addAndMakeVisible(cutoffLabel);
-    cutoffLabel.setText("Cut", juce::dontSendNotification);
-    cutoffLabel.setColour(juce::Label::textColourId, juce::Colours::white);
-    cutoffLabel.setFont(juce::Font(10.0f));
-    cutoffLabel.setJustificationType(juce::Justification::centred);
-
-    // Step buttons (16 visible, showing current bank)
-    for (int i = 0; i < stepsPerBank; ++i)
+    // Step buttons (64 visible at once)
+    for (int i = 0; i < TrackModel::totalSteps; ++i)
     {
         stepButtons[i] = std::make_unique<StepButton>();
         stepButtons[i]->setButtonText(juce::String(i + 1));
@@ -179,102 +211,138 @@ TrackComponent::TrackComponent(int trackIndex_, juce::AudioFormatManager& format
         addAndMakeVisible(stepButtons[i].get());
     }
 
-    // Initialize all bank steps to Off state
-    for (int bank = 0; bank < numBanks; ++bank)
+    // Add step button click handlers
+    for (int i = 0; i < TrackModel::totalSteps; ++i)
     {
-        for (int step = 0; step < stepsPerBank; ++step)
-        {
-            bankSteps[bank][step] = StepModifierState{false, ' ', 1};
-        }
-    }
+        const int globalStepIndex = i;
+        const int bankIndex = i / TrackModel::stepsPerBank;
+        const int stepInBank = i % TrackModel::stepsPerBank;
 
-    // Add step button click handlers (toggle steps in current bank)
-    for (int i = 0; i < stepsPerBank; ++i)
-    {
-        const int stepIndex = i;
-        const int bankIndex = currentBank;
-
-        // Left-click: Toggle between Off (active=false) and Normal (active=true, modifier=' ')
-        stepButtons[i]->onClick = [this, stepIndex] {
-            bool newState = !bankSteps[currentBank][stepIndex].active;
-            bankSteps[currentBank][stepIndex].active = newState;
-            updateStepButtonState(stepIndex, bankSteps[currentBank][stepIndex]);
+        // Left-click: Toggle step
+        stepButtons[i]->onClick = [this, globalStepIndex, bankIndex, stepInBank] {
+            StepModifierState state = model.getStepState(globalStepIndex);
+            state.active = !state.active;
+            model.setStepState(globalStepIndex, state);
+            updateStepButtonState(globalStepIndex, state);
         };
 
-        // Right-click: Open context menu with modifier submenus
-        const int buttonIdx = i;  // Capture i for lambda
-        stepButtons[i]->onRightClick = [this, stepIndex, bankIndex, buttonIdx] {
-            // Create submenus for each modifier type
-            juce::PopupMenu subSpeed, subSlow, subElongate, subReplicate;
+        // Right-click: Context menu
+        const int buttonIdx = i;
+        stepButtons[i]->onRightClick = [this, globalStepIndex, bankIndex, stepInBank, buttonIdx] {
+            juce::PopupMenu subSpeed, subSlow, subElongate, subReplicate, subProbability, subPitch, subVol;
 
-            // Speed submenu (*) - use simple IDs (1=2x, 2=3x, 3=4x)
+            // Speed submenu (*)
             subSpeed.addItem(1, "2x");
             subSpeed.addItem(2, "3x");
             subSpeed.addItem(3, "4x");
 
-            // Slow submenu (/) - base ID 10 (10=/2, 11=/3, 12=/4)
+            // Slow submenu (/)
             subSlow.addItem(10, "/2");
             subSlow.addItem(11, "/3");
             subSlow.addItem(12, "/4");
 
-            // Elongate submenu (@) - base ID 20 (20=@2, 21=@3, 22=@4)
+            // Elongate submenu (@)
             subElongate.addItem(20, "@2");
             subElongate.addItem(21, "@3");
             subElongate.addItem(22, "@4");
 
-            // Replicate submenu (!) - base ID 30 (30=!2, 31=!3, 32=!4)
+            // Replicate submenu (!)
             subReplicate.addItem(30, "!2");
             subReplicate.addItem(31, "!3");
             subReplicate.addItem(32, "!4");
 
+            // Probability submenu (?)
+            subProbability.addItem(40, "?25%");
+            subProbability.addItem(41, "?50%");
+            subProbability.addItem(42, "?75%");
+
+            // P-Lock Pitch submenu
+            for (int p = -12; p <= 12; ++p)
+            {
+                subPitch.addItem(112 + p, (p > 0 ? "+" : "") + juce::String(p) + " st");
+            }
+
+            // P-Lock Volume submenu
+            subVol.addItem(200, "0%");
+            subVol.addItem(201, "20%");
+            subVol.addItem(202, "40%");
+            subVol.addItem(203, "60%");
+            subVol.addItem(204, "80%");
+            subVol.addItem(205, "100%");
+
             // Main popup menu
             juce::PopupMenu m;
-            m.addItem(0, "Clear / Normal");
+            m.addItem(99, "Clear / Normal");
+            m.addSeparator();
             m.addSubMenu("Speed (*)", subSpeed);
             m.addSubMenu("Slow (/)", subSlow);
             m.addSubMenu("Elongate (@)", subElongate);
             m.addSubMenu("Replicate (!)", subReplicate);
+            m.addSubMenu("Probability (?)", subProbability);
+            m.addSeparator();
+            m.addSubMenu("Lock Pitch", subPitch);
+            m.addSubMenu("Lock Volume", subVol);
+            m.addItem(98, "Clear P-Locks");
 
             m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(stepButtons[buttonIdx].get()),
-                [this, stepIndex, bankIndex](int result)
+                [this, globalStepIndex, bankIndex, stepInBank](int result)
                 {
-                    if (result == 0)
+                    if (result == 0) return;
+
+                    StepModifierState state = model.getStepState(globalStepIndex);
+
+                    if (result == 99)
                     {
-                        // Clear / Normal
-                        bankSteps[currentBank][stepIndex] = StepModifierState{true, ' ', 1};
+                        state = StepModifierState{true, ' ', 1};
+                    }
+                    else if (result == 98)
+                    {
+                        state.hasPitchLock = false;
+                        state.hasVolLock = false;
                     }
                     else if (result >= 1 && result <= 3)
                     {
-                        // Speed (*) - result 1=2x, 2=3x, 3=4x
-                        int value = result + 1;  // Convert 0-index to 2,3,4
-                        bankSteps[currentBank][stepIndex] = StepModifierState{true, '*', value};
+                        int value = result + 1;
+                        state = StepModifierState{true, '*', value};
                     }
                     else if (result >= 10 && result <= 12)
                     {
-                        // Slow (/) - result 10=/2, 11=/3, 12=/4
-                        int value = result - 8;  // Convert to 2,3,4
-                        bankSteps[currentBank][stepIndex] = StepModifierState{true, '/', value};
+                        int value = result - 8;
+                        state = StepModifierState{true, '/', value};
                     }
                     else if (result >= 20 && result <= 22)
                     {
-                        // Elongate (@) - result 20=@2, 21=@3, 22=@4
-                        int value = result - 18;  // Convert to 2,3,4
-                        bankSteps[currentBank][stepIndex] = StepModifierState{true, '@', value};
+                        int value = result - 18;
+                        state = StepModifierState{true, '@', value};
                     }
                     else if (result >= 30 && result <= 32)
                     {
-                        // Replicate (!) - result 30=!2, 31=!3, 32=!4
-                        int value = result - 28;  // Convert to 2,3,4
-                        bankSteps[currentBank][stepIndex] = StepModifierState{true, '!', value};
+                        int value = result - 28;
+                        state = StepModifierState{true, '!', value};
                     }
-                    updateStepButtonState(stepIndex, bankSteps[currentBank][stepIndex]);
+                    else if (result >= 40 && result <= 42)
+                    {
+                        int value = 25 + (result - 40) * 25;
+                        state = StepModifierState{true, '?', value};
+                    }
+                    else if (result >= 100 && result <= 124)
+                    {
+                        state.active = true;
+                        state.hasPitchLock = true;
+                        state.pitchLock = result - 112;
+                    }
+                    else if (result >= 200 && result <= 205)
+                    {
+                        state.active = true;
+                        state.hasVolLock = true;
+                        state.volLock = (result - 200) * 0.2f;
+                    }
+
+                    model.setStepState(globalStepIndex, state);
+                    updateStepButtonState(globalStepIndex, state);
                 });
         };
     }
-
-    // Add more sampler voices to prevent voice stealing during rapid triggers
-    for (int i = 0; i < 8; ++i)
-        synth.addVoice(new CustomSamplerVoice());
 }
 
 TrackComponent::~TrackComponent()
@@ -299,201 +367,154 @@ juce::String TrackComponent::getSelectedCategory() const
 
 void TrackComponent::setStepActive(int step, bool active)
 {
-    jassert(step >= 0 && step < getTotalSteps());
-    const int bank = step / stepsPerBank;
-    const int bankStep = step % stepsPerBank;
-    bankSteps[bank][bankStep].active = active;
-    if (!active)
-    {
-        bankSteps[bank][bankStep].modifierType = ' ';
-        bankSteps[bank][bankStep].modifierValue = 1;
-    }
-    updateStepButtonState(bankStep, bankSteps[bank][bankStep]);
+    model.setStepActive(step, active);
+    updateStepButtonState(step, model.getStepState(step));
 }
 
 bool TrackComponent::isStepActive(int step) const
 {
-    jassert(step >= 0 && step < getTotalSteps());
-    const int bank = step / stepsPerBank;
-    const int bankStep = step % stepsPerBank;
-    return bankSteps[bank][bankStep].active;
+    return model.isStepActive(step);
 }
 
 StepModifierState TrackComponent::getStepState(int step) const
 {
-    jassert(step >= 0 && step < getTotalSteps());
-    const int bank = step / stepsPerBank;
-    const int bankStep = step % stepsPerBank;
-    return bankSteps[bank][bankStep];
+    return model.getStepState(step);
 }
 
 void TrackComponent::setStepState(int step, const StepModifierState& state)
 {
-    jassert(step >= 0 && step < getTotalSteps());
-    const int bank = step / stepsPerBank;
-    const int bankStep = step % stepsPerBank;
-    bankSteps[bank][bankStep] = state;
-    updateStepButtonState(bankStep, state);
+    model.setStepState(step, state);
+    updateStepButtonState(step, state);
 }
 
 void TrackComponent::setStepModifier(int step, char modifierType, int modifierValue)
 {
-    jassert(step >= 0 && step < getTotalSteps());
-    const int bank = step / stepsPerBank;
-    const int bankStep = step % stepsPerBank;
-    bankSteps[bank][bankStep].active = true;
-    bankSteps[bank][bankStep].modifierType = modifierType;
-    bankSteps[bank][bankStep].modifierValue = modifierValue;
-    updateStepButtonState(bankStep, bankSteps[bank][bankStep]);
+    model.setStepModifier(step, modifierType, modifierValue);
+    updateStepButtonState(step, model.getStepState(step));
 }
 
 int TrackComponent::getModifierValue(int step) const
 {
-    jassert(step >= 0 && step < getTotalSteps());
-    const int bank = step / stepsPerBank;
-    const int bankStep = step % stepsPerBank;
-    return bankSteps[bank][bankStep].modifierValue;
+    return model.getModifierValue(step);
 }
 
 char TrackComponent::getModifierType(int step) const
 {
-    jassert(step >= 0 && step < getTotalSteps());
-    const int bank = step / stepsPerBank;
-    const int bankStep = step % stepsPerBank;
-    return bankSteps[bank][bankStep].modifierType;
+    return model.getModifierType(step);
 }
 
 void TrackComponent::setBank(int bank)
 {
-    jassert(bank >= 0 && bank < numBanks);
-    currentBank = bank;
+    model.setBank(bank);
 
     // Update all bank buttons
-    for (int i = 0; i < numBanks; ++i)
+    for (int i = 0; i < TrackModel::numBanks; ++i)
     {
         bankButtons[i]->setToggleState(i == bank, juce::dontSendNotification);
     }
 
-    // Update bank button styles
     updateBankButtonStyles();
-
-    // Update visible step buttons to show new bank
     refreshStepButtons();
 }
 
 void TrackComponent::refreshStepButtons()
 {
-    for (int i = 0; i < stepsPerBank; ++i)
+    for (int i = 0; i < TrackModel::totalSteps; ++i)
     {
-        updateStepButtonState(i, bankSteps[currentBank][i]);
+        updateStepButtonState(i, model.getStepState(i));
     }
 }
 
 void TrackComponent::updateBankButtonStyles()
 {
-    for (int i = 0; i < numBanks; ++i)
+    const int currentBank = model.getBank();
+    for (int i = 0; i < TrackModel::numBanks; ++i)
     {
         if (i == currentBank)
         {
-            bankButtons[i]->setColour(juce::TextButton::buttonColourId, this->getNeonCyan());
-            bankButtons[i]->setColour(juce::TextButton::buttonOnColourId, this->getNeonCyan().withAlpha(0.3f));
+            bankButtons[i]->setColour(juce::TextButton::buttonColourId, getNeonCyan());
+            bankButtons[i]->setColour(juce::TextButton::buttonOnColourId, getNeonCyan().withAlpha(0.3f));
         }
         else
         {
-            bankButtons[i]->setColour(juce::TextButton::buttonColourId, this->getStepInactive());
-            bankButtons[i]->setColour(juce::TextButton::buttonOnColourId, this->getNeonPink());
+            bankButtons[i]->setColour(juce::TextButton::buttonColourId, getStepInactive());
+            bankButtons[i]->setColour(juce::TextButton::buttonOnColourId, getNeonPink());
         }
     }
 }
 
-void TrackComponent::updateStepButtonState(int bankStep, const StepModifierState& state)
+void TrackComponent::updateStepButtonState(int globalStep, const StepModifierState& state)
 {
-    if (bankStep >= 0 && bankStep < stepsPerBank && stepButtons[bankStep].get())
+    if (globalStep >= 0 && globalStep < TrackModel::totalSteps && stepButtons[globalStep].get())
     {
         const bool isActive = state.active;
-        stepButtons[bankStep]->setToggleState(isActive, juce::dontSendNotification);
+        stepButtons[globalStep]->setToggleState(isActive, juce::dontSendNotification);
+        stepButtons[globalStep]->isActiveStep = isActive;
 
         if (isActive)
         {
-            stepButtons[bankStep]->setColour(juce::TextButton::buttonColourId, this->getNeonPink());
-            // Show modifier and value if not normal
+            stepButtons[globalStep]->setColour(juce::TextButton::buttonColourId, getNeonPink());
             juce::String displayText = state.getDisplayText();
             if (displayText.isNotEmpty())
             {
-                stepButtons[bankStep]->setButtonText(displayText);
+                stepButtons[globalStep]->setButtonText(displayText);
             }
             else
             {
-                stepButtons[bankStep]->setButtonText(juce::String(bankStep + 1));
+                stepButtons[globalStep]->setButtonText(juce::String(globalStep + 1));
             }
         }
         else
         {
-            stepButtons[bankStep]->setColour(juce::TextButton::buttonColourId, this->getStepInactive());
-            stepButtons[bankStep]->setButtonText(juce::String(bankStep + 1));
+            stepButtons[globalStep]->setColour(juce::TextButton::buttonColourId, getStepInactive());
+            stepButtons[globalStep]->setButtonText(juce::String(globalStep + 1));
         }
     }
 }
 
 void TrackComponent::loadSampleForCategory(const juce::String& category, const juce::File& sampleDirectory)
 {
-    juce::File categoryDir = sampleDirectory.getChildFile(category);
-
-    if (!categoryDir.exists())
-        return;
-
-    // Find all .wav files in directory and store them
-    currentSampleFiles.clear();
-    categoryDir.findChildFiles(currentSampleFiles, juce::File::findFiles, false, "*.wav");
-
-    if (currentSampleFiles.isEmpty())
-        return;
-
-    // Reset index to 0 and update label
-    currentSampleIndex = 0;
+    audioProcessor.loadSampleForCategory(category, sampleDirectory);
     updateSampleIndexLabel();
-
-    juce::File sampleFile = currentSampleFiles[currentSampleIndex];
-    std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(sampleFile));
-
-    if (!reader)
-        return;
-
-    juce::BigInteger allNotes;
-    allNotes.setRange(0, 128, true);
-
-    // Remove old sounds and add new one with generous ADSR envelope
-    juce::ScopedLock lock(synthLock);
-    synth.clearSounds();
-
-    // Create SamplerSound with generous ADSR envelope for full sample playback
-    // Attack knob value, Decay knob value, Sustain=1.0 (implicit), Release=1.0
-    const float attackTime = attack.load();
-    const float decayTime = decay.load();
-    synth.addSound(new juce::SamplerSound(category, *reader, allNotes, 60, attackTime, decayTime, 1.0));
 }
 
 void TrackComponent::resized()
 {
+    isResizing = true;
+
     auto area = getLocalBounds();
 
-    // Top row: label, category selector, sample selection, and bank selector
+    // Top row
     auto headerArea = area.removeFromTop(40);
 
-    trackLabel.setBounds(headerArea.removeFromLeft(80));
+    // Expand button first
+    expandButton.setBounds(headerArea.removeFromLeft(25).reduced(2, 8));
+    trackLabel.setBounds(headerArea.removeFromLeft(70));
 
-    // Calculate required width for sample controls + bank buttons
-    const int sampleControlsWidth = 130;  // < 2/2 > + space
-    const int bankButtonsWidth = 120;      // A B C D buttons + label + space
+    // Mute/Solo/Clear buttons
+    const int controlBtnWidth = 22;
+    auto leftControls = headerArea.removeFromLeft(80);
+    muteButton.setBounds(leftControls.removeFromLeft(controlBtnWidth).reduced(1, 8));
+    soloButton.setBounds(leftControls.removeFromLeft(controlBtnWidth).reduced(1, 8));
+    clearButton.setBounds(leftControls.removeFromLeft(controlBtnWidth).reduced(1, 8));
+
+    // Loop length slider
+    auto loopArea = headerArea.removeFromLeft(100);
+    loopLengthLabel.setBounds(loopArea.removeFromLeft(30).reduced(0, 12));
+    loopLengthSlider.setBounds(loopArea.reduced(0, 8));
+
+    // Calculate required width
+    const int sampleControlsWidth = 130;
+    const int bankButtonsWidth = 120;
     const int rightControlsWidth = sampleControlsWidth + bankButtonsWidth + 10;
 
     auto rightArea = headerArea.removeFromRight(rightControlsWidth);
 
-    // Bank selector buttons (right side)
+    // Bank selector buttons
     auto bankArea = rightArea.removeFromRight(bankButtonsWidth);
     const int bankButtonSize = 22;
     bankLabel.setBounds(bankArea.removeFromLeft(25).reduced(2, 10));
-    for (int i = 0; i < numBanks; ++i)
+    for (int i = 0; i < TrackModel::numBanks; ++i)
     {
         bankButtons[i]->setBounds(bankArea.removeFromLeft(bankButtonSize).reduced(1, 5));
     }
@@ -504,51 +525,56 @@ void TrackComponent::resized()
     sampleIndexLabel.setBounds(sampleControlsArea.removeFromLeft(55).reduced(3, 10));
     nextSampleButton.setBounds(sampleControlsArea.removeFromLeft(22).reduced(2, 8));
 
-    // Category dropdown fills remaining space
+    // Category dropdown
     categoryComboBox.setBounds(headerArea.reduced(5, 5));
 
-    // Second row: control knobs (5 knobs: Volume, Pitch, Attack, Decay, Cutoff)
+    // CRITICAL: If collapsed, stop here
+    if (!model.getIsExpanded())
+    {
+        isResizing = false;
+        return;
+    }
+
+    // Second row: control knobs
     auto controlArea = area.removeFromTop(50);
     const int knobSize = 38;
     const int knobSpacing = 8;
     const int totalKnobsWidth = (knobSize * 5) + (knobSpacing * 4);
     auto knobRow = controlArea.withTrimmedLeft((controlArea.getWidth() - totalKnobsWidth) / 2).withWidth(totalKnobsWidth);
 
-    volumeSlider.setBounds(knobRow.removeFromLeft(knobSize));
-    volumeLabel.setBounds(volumeSlider.getBounds().withTrimmedBottom(5).withTrimmedTop(23));
-
-    knobRow.removeFromLeft(knobSpacing);
-
-    pitchSlider.setBounds(knobRow.removeFromLeft(knobSize));
-    pitchLabel.setBounds(pitchSlider.getBounds().withTrimmedBottom(5).withTrimmedTop(23));
-
-    knobRow.removeFromLeft(knobSpacing);
-
-    attackSlider.setBounds(knobRow.removeFromLeft(knobSize));
-    attackLabel.setBounds(attackSlider.getBounds().withTrimmedBottom(5).withTrimmedTop(23));
-
-    knobRow.removeFromLeft(knobSpacing);
-
-    decaySlider.setBounds(knobRow.removeFromLeft(knobSize));
-    decayLabel.setBounds(decaySlider.getBounds().withTrimmedBottom(5).withTrimmedTop(23));
-
-    knobRow.removeFromLeft(knobSpacing);
-
-    cutoffSlider.setBounds(knobRow.removeFromLeft(knobSize));
-    cutoffLabel.setBounds(cutoffSlider.getBounds().withTrimmedBottom(5).withTrimmedTop(23));
-
-    // Step buttons row
-    auto stepArea = area.withHeight(50);
-    const int buttonWidth = stepArea.getWidth() / stepsPerBank;
-    for (int i = 0; i < stepsPerBank; ++i)
+    for (int i = 0; i < 5; ++i)
     {
-        stepButtons[i]->setBounds(
-            stepArea.getX() + i * buttonWidth,
-            stepArea.getY(),
-            buttonWidth - 2,
-            stepArea.getHeight()
-        );
+        controlSliders[i]->setBounds(knobRow.removeFromLeft(knobSize));
+        controlLabels[i]->setBounds(controlSliders[i]->getBounds().withTrimmedBottom(5).withTrimmedTop(23));
+        if (i < 4) knobRow.removeFromLeft(knobSpacing);
     }
+
+    // Step buttons - 2 rows of 32 steps
+    auto stepRow1 = area.removeFromTop(35);
+    auto stepRow2 = area.removeFromTop(35);
+    const int buttonsPerRow = 32;
+    const int buttonWidth1 = stepRow1.getWidth() / buttonsPerRow;
+    const int buttonWidth2 = stepRow2.getWidth() / buttonsPerRow;
+    const int row1X = stepRow1.getX();
+    const int row1Y = stepRow1.getY();
+    const int row1H = stepRow1.getHeight();
+    const int row2X = stepRow2.getX();
+    const int row2Y = stepRow2.getY();
+    const int row2H = stepRow2.getHeight();
+
+    // First row: steps 1-32
+    for (int i = 0; i < buttonsPerRow; ++i)
+    {
+        stepButtons[i]->setBounds(row1X + i * buttonWidth1, row1Y, buttonWidth1 - 1, row1H);
+    }
+
+    // Second row: steps 33-64
+    for (int i = 0; i < buttonsPerRow; ++i)
+    {
+        stepButtons[i + buttonsPerRow]->setBounds(row2X + i * buttonWidth2, row2Y, buttonWidth2 - 1, row2H);
+    }
+
+    isResizing = false;
 }
 
 void TrackComponent::paint(juce::Graphics& g)
@@ -560,130 +586,88 @@ void TrackComponent::paint(juce::Graphics& g)
 
 void TrackComponent::updatePlayhead(int currentStep, bool isPlaying)
 {
-    // Calculate which step in current bank to highlight
-    // currentStep is 0-63, we need to show only steps in current bank
-    const int bankOfCurrentStep = currentStep / stepsPerBank;
-    const int stepInBank = currentStep % stepsPerBank;
+    if (isResizing)
+        return;
 
-    for (int i = 0; i < stepsPerBank; ++i)
+    if (currentStep == lastPlayedStep && isPlaying)
+        return;
+
+    // Restore previous step's color
+    if (lastPlayedStep >= 0 && lastPlayedStep < TrackModel::totalSteps)
     {
-        const bool isCurrentStep = (i == stepInBank && bankOfCurrentStep == currentBank && isPlaying);
-        const bool isActive = stepButtons[i]->getToggleState();
-
-        if (isCurrentStep)
-        {
-            stepButtons[i]->setColour(juce::TextButton::buttonColourId,
-                isActive ? getNeonPink() : getNeonCyan());
-        }
-        else if (isActive)
-        {
-            stepButtons[i]->setColour(juce::TextButton::buttonColourId, getNeonPink());
-        }
-        else
-        {
-            stepButtons[i]->setColour(juce::TextButton::buttonColourId, getStepInactive());
-        }
-        stepButtons[i]->repaint();
+        const bool wasActive = stepButtons[lastPlayedStep]->getToggleState();
+        stepButtons[lastPlayedStep]->setColour(juce::TextButton::buttonColourId,
+            wasActive ? getNeonPink() : getStepInactive());
+        stepButtons[lastPlayedStep]->isActiveStep = wasActive;
+        stepButtons[lastPlayedStep]->repaint();
     }
-}
 
-void TrackComponent::updateDecayEnvelope()
-{
-    juce::ScopedLock lock(synthLock);
-
-    const float attackTime = attack.load();
-    const float decayTime = decay.load();
-
-    // Update all SamplerSound instances with new ADSR parameters
-    for (int i = 0; i < synth.getNumSounds(); ++i)
+    // Highlight new current step
+    if (currentStep >= 0 && currentStep < TrackModel::totalSteps)
     {
-        if (auto* sound = dynamic_cast<juce::SamplerSound*>(synth.getSound(i).get()))
-        {
-            // Note: In JUCE 8, SamplerSound doesn't have a direct setADSR method
-            // The ADSR is set at creation time, so we need to reload sample
-            // For now, we store values for future sample loads
-        }
+        const bool isActive = stepButtons[currentStep]->getToggleState();
+        stepButtons[currentStep]->setColour(juce::TextButton::buttonColourId,
+            isActive ? getNeonPink() : getNeonCyan());
+        stepButtons[currentStep]->isActiveStep = true;
+        stepButtons[currentStep]->repaint();
     }
+
+    lastPlayedStep = currentStep;
 }
 
 void TrackComponent::changeSampleIndex(int delta)
 {
-    if (currentSampleFiles.isEmpty())
+    if (model.getNumSamples() == 0)
         return;
 
-    // Calculate new index with wrap-around
-    currentSampleIndex += delta;
-    if (currentSampleIndex < 0)
-        currentSampleIndex = currentSampleFiles.size() - 1;
-    else if (currentSampleIndex >= currentSampleFiles.size())
-        currentSampleIndex = 0;
+    int newIndex = model.getCurrentSampleIndex() + delta;
+    if (newIndex < 0)
+        newIndex = model.getNumSamples() - 1;
+    else if (newIndex >= model.getNumSamples())
+        newIndex = 0;
 
-    // Load new sample
-    loadSampleAtIndex(currentSampleIndex);
+    loadSampleAtIndex(newIndex);
 }
 
 void TrackComponent::loadSampleAtIndex(int index)
 {
-    if (index < 0 || index >= currentSampleFiles.size())
-        return;
-
-    juce::File sampleFile = currentSampleFiles[index];
-    std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(sampleFile));
-
-    if (!reader)
-        return;
-
-    juce::BigInteger allNotes;
-    allNotes.setRange(0, 128, true);
-
-    juce::ScopedLock lock(synthLock);
-    synth.clearSounds();
-
-    const float attackTime = attack.load();
-    const float decayTime = decay.load();
-    juce::String category = getSelectedCategory();
-    synth.addSound(new juce::SamplerSound(category, *reader, allNotes, 60, attackTime, decayTime, 1.0));
-
+    audioProcessor.loadSampleAtIndex(index);
     updateSampleIndexLabel();
 }
 
 void TrackComponent::updateSampleIndexLabel()
 {
-    if (currentSampleFiles.isEmpty())
+    if (model.getNumSamples() == 0)
         sampleIndexLabel.setText("0 / 0", juce::dontSendNotification);
     else
-        sampleIndexLabel.setText(juce::String(currentSampleIndex + 1) + " / " +
-            juce::String(currentSampleFiles.size()), juce::dontSendNotification);
+        sampleIndexLabel.setText(juce::String(model.getCurrentSampleIndex() + 1) + " / " +
+            juce::String(model.getNumSamples()), juce::dontSendNotification);
 }
 
 void TrackComponent::prepareAudio(double sampleRate, int samplesPerBlock)
 {
-    // Prepare low-pass filter with current cutoff frequency
-    auto spec = juce::dsp::ProcessSpec();
-    spec.sampleRate = sampleRate;
-    spec.maximumBlockSize = static_cast<juce::uint32>(samplesPerBlock);
-    spec.numChannels = 2;
-
-    lowPassFilter.prepare(spec);
-
-    // Set initial filter coefficients (Low-Pass filter)
-    const float cutoffFreq = cutoff.load();
-    *lowPassFilter.state = *juce::dsp::IIR::Coefficients<float>::makeLowPass(sampleRate, cutoffFreq);
-
-    // Store sample rate for filter coefficient updates
-    currentSampleRate = sampleRate;
+    audioProcessor.prepareAudio(sampleRate, samplesPerBlock);
 }
 
 void TrackComponent::processAudioBlock(juce::AudioBuffer<float>& buffer)
 {
-    // Apply low-pass filter with current cutoff frequency
-    juce::dsp::AudioBlock<float> block(buffer);
-    juce::dsp::ProcessContextReplacing<float> context(block);
+    audioProcessor.processAudioBlock(buffer);
+}
 
-    // Update filter coefficients if cutoff changed
-    const float cutoffFreq = cutoff.load();
-    *lowPassFilter.state = *juce::dsp::IIR::Coefficients<float>::makeLowPass(
-        currentSampleRate, cutoffFreq);
+void TrackComponent::setMuted(bool muted)
+{
+    audioProcessor.setMuted(muted);
+    muteButton.setToggleState(muted, juce::dontSendNotification);
+}
 
-    lowPassFilter.process(context);
+void TrackComponent::setSolo(bool solo)
+{
+    audioProcessor.setSolo(solo);
+    soloButton.setToggleState(solo, juce::dontSendNotification);
+}
+
+void TrackComponent::clearAllSteps()
+{
+    model.clearAllSteps();
+    refreshStepButtons();
 }

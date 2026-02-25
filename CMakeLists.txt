@@ -6,21 +6,41 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# JUCE FetchContent configuration
 include(FetchContent)
 
+# Fetch JUCE first
 FetchContent_Declare(
     JUCE
     GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
     GIT_TAG        8.0.4
 )
-
 FetchContent_MakeAvailable(JUCE)
 
-# Find JUCE module paths
-set(JUCE_MODULE_PATH "${JUCE_SOURCE_DIR}/modules" CACHE PATH "")
+# Set JUCE module path
+set(JUCE_MODULE_PATH "${juce_SOURCE_DIR}/modules" CACHE PATH "")
 
-# Define JUCE modules
+# Fetch melatonin_blur content manually without running its CMakeLists.txt
+FetchContent_Declare(
+    melatonin_blur
+    GIT_REPOSITORY https://github.com/sudara/melatonin_blur.git
+    GIT_TAG main
+    GIT_SHALLOW TRUE
+)
+
+# Only populate, don't make available (this skips CMakeLists.txt)
+FetchContent_GetProperties(melatonin_blur)
+if(NOT melatonin_blur_POPULATED)
+    FetchContent_Populate(melatonin_blur)
+endif()
+
+# Create our own interface library for melatonin_blur
+add_library(melatonin_blur STATIC
+    ${melatonin_blur_SOURCE_DIR}/melatonin_blur.cpp
+)
+target_include_directories(melatonin_blur PUBLIC ${melatonin_blur_SOURCE_DIR})
+target_link_libraries(melatonin_blur PUBLIC juce::juce_graphics juce::juce_gui_basics)
+
+# Define the application
 juce_add_gui_app(NeonSakuraStudio
     INSTALL_EXPORTS NeonSakuraStudioTargets
     COMPANY_NAME "NeonSakura"
@@ -33,11 +53,27 @@ target_sources(NeonSakuraStudio
     source/Main.cpp
     source/MainComponent.h
     source/MainComponent.cpp
+    source/TrackModel.h
+    source/TrackModel.cpp
+    source/TrackAudioProcessor.h
+    source/TrackAudioProcessor.cpp
     source/TrackComponent.h
     source/TrackComponent.cpp
+    source/PatternGenerator.h
+    source/PatternGenerator.cpp
+    source/AudioEngine.h
+    source/AudioEngine.cpp
+    source/RhythmExplorer.h
+    source/RhythmExplorer.cpp
+    source/MusicTheory.h
+    source/MusicTheory.cpp
+    source/MelodyGenerator.h
+    source/MelodyGenerator.cpp
+    source/MelodyPanel.h
+    source/MelodyPanel.cpp
 )
 
-# Add JUCE modules
+# Link JUCE modules and melatonin_blur
 target_link_libraries(NeonSakuraStudio
     PRIVATE
     juce::juce_audio_basics
@@ -52,9 +88,9 @@ target_link_libraries(NeonSakuraStudio
     juce::juce_graphics
     juce::juce_gui_basics
     juce::juce_gui_extra
+    melatonin_blur
 )
 
-# Build targets for supported platforms
 if(JUCE_WINDOWS)
     target_link_libraries(NeonSakuraStudio PRIVATE juce::juce_recommended_config_flags)
     target_link_libraries(NeonSakuraStudio PRIVATE juce::juce_recommended_lto_flags)

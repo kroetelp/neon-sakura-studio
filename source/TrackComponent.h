@@ -4,32 +4,12 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_gui_basics/juce_gui_basics.h>
-#include <juce_dsp/juce_dsp.h>
+#include <melatonin_blur.h>
 #include <functional>
-#include <atomic>
+#include "TrackModel.h"
+#include "TrackAudioProcessor.h"
 
-// Step state struct supporting TidalCycles modifiers
-struct StepModifierState
-{
-    bool active = false;
-    char modifierType = ' ';  // ' ' = Normal, '*' = Speed, '/' = Slow, '@' = Elongate, '!' = Replicate
-    int modifierValue = 1;      // Modifier value (1-4 typically)
-
-    // Helper to check if step is effectively active
-    bool isActive() const { return active; }
-
-    // Helper to get display text
-    juce::String getDisplayText() const
-    {
-        if (!active)
-            return "";
-        if (modifierType == ' ')
-            return "";
-        return juce::String(modifierType) + juce::String(modifierValue);
-    }
-};
-
-// Custom step button with right-click support for modifiers
+// Custom step button with right-click support for modifiers and neon glow
 class StepButton : public juce::TextButton
 {
 public:
@@ -37,6 +17,7 @@ public:
     ~StepButton() override = default;
 
     std::function<void()> onRightClick;
+    bool isActiveStep = false;  // For neon glow rendering
 
     void mouseDown(const juce::MouseEvent& e) override
     {
@@ -50,6 +31,8 @@ public:
             juce::TextButton::mouseDown(e);
         }
     }
+
+    void paintButton(juce::Graphics& g, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override;
 };
 
 class TrackComponent : public juce::Component
@@ -61,6 +44,7 @@ public:
     void resized() override;
     void paint(juce::Graphics& g) override;
 
+    // UI -> Model delegation
     void setSampleCategories(const juce::StringArray& categories);
     void setSelectedCategory(const juce::String& category);
     juce::String getSelectedCategory() const;
@@ -73,44 +57,56 @@ public:
     int getModifierValue(int step) const;
     char getModifierType(int step) const;
 
-    // Pattern bank methods
+    // Bank methods
     void setBank(int bank);
-    int getBank() const { return currentBank; }
-    int getTotalSteps() const { return numBanks * stepsPerBank; }
+    int getBank() const { return model.getBank(); }
+    int getTotalSteps() const { return TrackModel::totalSteps; }
 
-    juce::Synthesiser& getSynthesiser() { return synth; }
+    // UI -> AudioProcessor delegation
+    juce::Synthesiser& getSynthesiser() { return audioProcessor.getSynthesiser(); }
     juce::ComboBox& getComboBox() { return categoryComboBox; }
     void loadSampleForCategory(const juce::String& category, const juce::File& sampleDirectory);
     void updatePlayhead(int currentStep, bool isPlaying);
 
-    // Control value getters
-    float getVolume() const { return volume; }
-    int getPitch() const { return pitch; }
-    float getDecay() const { return decay; }
-    float getAttack() const { return attack; }
-    float getCutoff() const { return cutoff; }
+    // Control value getters (delegated to AudioProcessor)
+    float getVolume() const { return audioProcessor.getVolume(); }
+    int getPitch() const { return audioProcessor.getPitch(); }
+    float getDecay() const { return audioProcessor.getDecay(); }
+    float getAttack() const { return audioProcessor.getAttack(); }
+    float getCutoff() const { return audioProcessor.getCutoff(); }
+    int getTrackLoopLength() const { return model.getTrackLoopLength(); }
+
+    // Mute/Solo getters
+    bool getMuted() const { return audioProcessor.getMuted(); }
+    bool getSolo() const { return audioProcessor.getSolo(); }
+    bool getIsExpanded() const { return model.getIsExpanded(); }
+    void setMuted(bool muted);
+    void setSolo(bool solo);
+    void clearAllSteps();
+
+    // Callback for collapse state changes
+    std::function<void()> onStateChange;
 
     // Sample selection helpers
     void changeSampleIndex(int delta);
     void loadSampleAtIndex(int index);
     void updateSampleIndexLabel();
 
-    // Update decay envelope when knob changes
-    void updateDecayEnvelope();
-
-    // Audio processing
+    // Audio processing (delegated to AudioProcessor)
     void prepareAudio(double sampleRate, int samplesPerBlock);
     void processAudioBlock(juce::AudioBuffer<float>& buffer);
 
     // Bank and step button UI helpers
     void refreshStepButtons();
     void updateBankButtonStyles();
-    void updateStepButtonState(int bankStep, const StepModifierState& state);
+    void updateStepButtonState(int globalStep, const StepModifierState& state);
 
 private:
-    static constexpr int numBanks = 4;
-    static constexpr int stepsPerBank = 16;
     int trackIndex;
+
+    // Model (data) and AudioProcessor
+    TrackModel model;
+    TrackAudioProcessor audioProcessor;
 
     // GUI Components
     juce::Label trackLabel;
@@ -121,48 +117,34 @@ private:
     juce::TextButton nextSampleButton;
     juce::Label sampleIndexLabel;
 
+    // Track controls (Mute, Solo, Clear)
+    juce::TextButton muteButton;
+    juce::TextButton soloButton;
+    juce::TextButton clearButton;
+
     // Bank selector buttons
-    std::array<std::unique_ptr<juce::TextButton>, numBanks> bankButtons;
+    std::array<std::unique_ptr<juce::TextButton>, TrackModel::numBanks> bankButtons;
     juce::Label bankLabel;
 
     // Control knobs (Volume, Pitch, Attack, Decay, Cutoff)
-    juce::Slider volumeSlider;
-    juce::Slider pitchSlider;
-    juce::Slider attackSlider;
-    juce::Slider decaySlider;
-    juce::Slider cutoffSlider;
-    juce::Label volumeLabel;
-    juce::Label pitchLabel;
-    juce::Label attackLabel;
-    juce::Label decayLabel;
-    juce::Label cutoffLabel;
+    std::array<std::unique_ptr<juce::Slider>, 5> controlSliders;
+    std::array<std::unique_ptr<juce::Label>, 5> controlLabels;
 
-    // Step buttons for display (16 visible at a time)
-    std::array<std::unique_ptr<StepButton>, stepsPerBank> stepButtons;
+    // Step buttons for display (64 visible at once)
+    std::array<std::unique_ptr<StepButton>, TrackModel::totalSteps> stepButtons;
 
-    // Pattern bank storage (4 banks x 16 steps) - now stores StepModifierState
-    std::array<std::array<StepModifierState, stepsPerBank>, numBanks> bankSteps;
-    int currentBank = 0;
+    // Expand/Collapse button
+    juce::TextButton expandButton;
 
-    // Audio
-    juce::Synthesiser synth;
-    juce::AudioFormatManager& formatManager;
-    juce::CriticalSection synthLock;
+    // Loop length slider
+    juce::Slider loopLengthSlider;
+    juce::Label loopLengthLabel;
 
-    // DSP Filter (Low-Pass)
-    juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>> lowPassFilter;
-    double currentSampleRate = 44100.0;
+    // Playhead caching
+    int lastPlayedStep{-1};
 
-    // Control values (thread-safe for audio access)
-    std::atomic<float> volume{0.8f};
-    std::atomic<int> pitch{0};
-    std::atomic<float> attack{0.0f};
-    std::atomic<float> decay{0.5f};
-    std::atomic<float> cutoff{20000.0f};
-
-    // Sample selection
-    juce::Array<juce::File> currentSampleFiles;
-    int currentSampleIndex = 0;
+    // Flag to prevent repaints during resize
+    bool isResizing{false};
 
     // Colors
     juce::Colour getNeonPink() const { return juce::Colour(255, 20, 147); }

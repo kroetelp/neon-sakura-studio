@@ -5,7 +5,17 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <juce_dsp/juce_dsp.h>
+#include <vector>
+#include <random>
+#include <chrono>
+#include <atomic>
+#include <memory>
 #include "TrackComponent.h"
+#include "PatternGenerator.h"
+#include "AudioEngine.h"
+#include "RhythmExplorer.h"
+#include "MelodyPanel.h"
 
 class MainComponent : public juce::AudioAppComponent,
                        public juce::Timer
@@ -24,24 +34,47 @@ public:
     void timerCallback() override;
 
 private:
-    static constexpr int numTracks = 4;
+    static constexpr int numTracks = 8;
 
-    // Audio format management
+    // Audio format management (kept for TrackComponent creation)
     juce::AudioFormatManager formatManager;
-    double currentSampleRate = 44100.0;
 
     // GUI Components - Top controls
     juce::TextButton playButton;
     juce::TextButton stopButton;
     juce::TextButton setFolderButton;
+    juce::TextButton clearAllButton;
+    juce::TextButton audioSettingsButton;  // Audio device selection
+    juce::TextButton rhythmExplorerButton;  // Toggle for RhythmExplorer panel
     juce::Slider bpmSlider;
     juce::Label bpmLabel;
+    juce::Slider masterVolumeSlider;
+    juce::Label masterVolumeLabel;
     juce::ComboBox loopLengthComboBox;
     juce::Label loopLengthLabel;
     juce::Label folderLabel;
+    juce::ComboBox genreComboBox;
+    juce::TextButton generateButton;
+    juce::Slider swingSlider;
+    juce::Label swingLabel;
+    juce::Slider reverbSlider;
+    juce::Label reverbLabel;
+
+    // Rhythm Explorer panel
+    std::unique_ptr<RhythmExplorer> rhythmExplorer;
+    bool rhythmExplorerVisible = false;
+    int selectedTrackForRhythm = 0;
+
+    // Melody Workstation panel
+    std::unique_ptr<MelodyPanel> melodyPanel;
+    bool melodyPanelVisible = false;
+    juce::TextButton melodyWorkstationButton;  // Toggle for MelodyPanel
 
     // Track components
     std::array<std::unique_ptr<TrackComponent>, numTracks> tracks;
+
+    // Audio Engine (handles all audio processing)
+    std::unique_ptr<AudioEngine> audioEngine;
 
     // Sample directory
     juce::File sampleDirectory;
@@ -51,18 +84,11 @@ private:
     // File chooser for folder selection
     std::unique_ptr<juce::FileChooser> chooser;
 
-    // Playback state
-    bool isPlaying = false;
-    int lastPlayedStep = -1;
-    int globalLoopCounter = 0;  // For Slow (/) modifier
-    std::atomic<int> loopLength{16};
+    // UI state
+    bool isResizing = false;  // Flag to prevent updates during resize
 
-    // Timing (thread-safe)
+    // BPM atomic for PatternGenerator (synced with AudioEngine)
     std::atomic<double> bpm{120.0};
-
-    // Audio thread timing - SAMPLE ACCURATE
-    std::atomic<uint64_t> samplePosition{0};
-    std::atomic<int> samplesPerStep{0};
 
     // Pending sample loads
     struct PendingSampleLoad
@@ -83,11 +109,14 @@ private:
     void updatePlayhead();
     void togglePlay();
     void stopPlayback();
-    void calculateSamplesPerStep();
     void autoDetectSampleDirectory();
     void openFolderChooser();
     void scanSampleDirectory(const juce::File& directory);
     void loadPendingSamples();
+    void showAudioSettingsDialog();  // Opens audio device selection dialog
+
+    // Pattern generator
+    std::unique_ptr<PatternGenerator> patternGenerator;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };
