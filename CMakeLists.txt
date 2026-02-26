@@ -162,3 +162,10 @@ if(JUCE_WINDOWS)
     target_link_libraries(NeonSakuraStudio PRIVATE juce::juce_recommended_config_flags)
     target_link_libraries(NeonSakuraStudio PRIVATE juce::juce_recommended_lto_flags)
 endif()
+
+# =========================================================
+# WOOTING ANALOG SDK INTEGRATION
+# =========================================================
+# (Stelle sicher, dass diese Ordner auf deinem PC existieren)
+target_include_directories(NeonSakuraStudio PRIVATE "thirdparty/wooting/include")
+target_link_libraries(NeonSakuraStudio PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/wooting/lib/wooting_analog_sdk.dll.lib")

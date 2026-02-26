@@ -74,3 +74,13 @@ samples/
 *.mp3
 *.aiff
 *.flac
+
+# Claude Code
+.claude/
+CLAUDE.md
+
+# Desktop build
+super-strudel-desktop/
+
+# Windows artifacts
+nul

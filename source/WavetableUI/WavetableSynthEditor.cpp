@@ -285,13 +285,13 @@ void WavetableSynthEditor::timerCallback()
 void WavetableSynthEditor::handleNoteOn(juce::MidiKeyboardState* source, int midiChannel, int midiNoteNumber, float velocity)
 {
     if (engine)
-        engine->noteOn(midiNoteNumber, velocity);
+        engine->noteOn(midiChannel, midiNoteNumber, velocity);
 }
 
 void WavetableSynthEditor::handleNoteOff(juce::MidiKeyboardState* source, int midiChannel, int midiNoteNumber, float velocity)
 {
     if (engine)
-        engine->noteOff(midiNoteNumber);
+        engine->noteOff(midiChannel, midiNoteNumber);
 }
 
 void WavetableSynthEditor::setupPresetUI()

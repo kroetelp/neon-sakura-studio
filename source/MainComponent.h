@@ -1,24 +1,5 @@
 #pragma once
 
-/**
- * MainComponent - Main application component (UI coordination only)
- *
- * After refactoring, MainComponent is no longer a "God Class".
- * It delegates responsibilities to specialized managers:
- * - TrackManager: Track array ownership and access
- * - SampleManager: Sample directory and category management
- * - PlaybackController: Playback state management
- * - PanelManager: Side panels and floating windows
- * - AudioEngine: Audio processing (uses ITrackDataProvider interface)
- * - PatternGenerator: Algorithmic pattern generation
- *
- * MainComponent now focuses on:
- * - Top-level UI layout
- * - UI event handlers (buttons, sliders)
- * - Connecting UI to controllers
- * - AudioAppComponent delegation
- */
-
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -31,8 +12,8 @@
 #include <atomic>
 #include <memory>
 
-// --- NEU: Unser LookAndFeel einbinden ---
 #include "WavetableUI/NeonSakuraLookAndFeel.h" 
+#include "WootingManager.h"
 
 // Forward declarations
 class TrackManager;
@@ -64,38 +45,25 @@ public:
 private:
     static constexpr int numTracks = 8;
 
-    // --- NEU: Instanz unseres eigenen Designs ---
     NeonSakuraLookAndFeel customLookAndFeel;
 
     // ========================================================================
-    // MANAGERS AND CONTROLLERS (Decoupled responsibilities)
+    // MANAGERS AND CONTROLLERS
     // ========================================================================
-
-    // Audio format management (kept for TrackManager creation)
     juce::AudioFormatManager formatManager;
-
-    // Track management (owns track array)
     std::unique_ptr<TrackManager> trackManager;
-
-    // Sample management (directory, categories, loading)
     std::unique_ptr<SampleManager> sampleManager;
-
-    // Playback state (BPM, swing, playing, etc.)
     std::unique_ptr<PlaybackController> playbackController;
-
-    // Panel management (side panels, floating windows)
     std::unique_ptr<PanelManager> panelManager;
-
-    // Audio processing
     std::unique_ptr<AudioEngine> audioEngine;
-
-    // Pattern generation
     std::unique_ptr<PatternGenerator> patternGenerator;
+    
+    // --- NEU: Der Wooting Manager ---
+    std::unique_ptr<WootingManager> wootingManager;
 
     // ========================================================================
-    // GUI COMPONENTS (Top controls)
+    // GUI COMPONENTS
     // ========================================================================
-
     juce::TextButton playButton;
     juce::TextButton stopButton;
     juce::TextButton setFolderButton;
@@ -119,19 +87,11 @@ private:
     juce::Slider reverbSlider;
     juce::Label reverbLabel;
 
-    // Track selection state (for RhythmExplorer and MelodyPanel)
     int selectedTrackForRhythm = 0;
-
-    // File chooser for folder selection
     std::unique_ptr<juce::FileChooser> chooser;
-
-    // UI state
     bool isResizing = false;
 
-    // ========================================================================
     // HELPER METHODS
-    // ========================================================================
-
     void initializeManagers();
     void initializeUI();
     void connectTrackCallbacks();
@@ -144,7 +104,6 @@ private:
     void openFolderChooser();
     void showAudioSettingsDialog();
 
-    // Colors
     juce::Colour getNeonPink() const { return juce::Colour(255, 20, 147); }
     juce::Colour getNeonCyan() const { return juce::Colour(0, 255, 255); }
     juce::Colour getNeonPurple() const { return juce::Colour(180, 0, 255); }

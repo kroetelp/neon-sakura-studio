@@ -52,9 +52,9 @@ public:
     // MIDI input for standalone mode
     void handleMidiEvent(const juce::MidiMessage& message);
 
-    // Note on/off for testing/keyboard
-    void noteOn(int midiNote, float velocity);
-    void noteOff(int midiNote);
+    // Note on/off for testing/keyboard (now with dynamic channel)
+    void noteOn(int channel, int midiNote, float velocity);
+    void noteOff(int channel, int midiNote);
 
     // Master volume
     void setMasterVolume(float volume) { masterVolume.store(volume); }

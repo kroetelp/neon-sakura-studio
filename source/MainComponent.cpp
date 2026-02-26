@@ -12,24 +12,15 @@
 
 MainComponent::MainComponent()
 {
-    // --- NEU: Aktiviere unser eigenes Design für das gesamte Hauptfenster ---
     setLookAndFeel(&customLookAndFeel);
 
-    // Register audio formats first
     formatManager.registerBasicFormats();
-
-    // Initialize managers
     initializeManagers();
-
-    // Initialize UI
     initializeUI();
-
-    // Connect callbacks
     connectTrackCallbacks();
     connectPanelCallbacks();
     connectUICallbacks();
 
-    // Auto-detect sample directory
     juce::File detectedDir = sampleManager->autoDetectSampleDirectory();
     if (detectedDir.exists())
     {
@@ -37,45 +28,30 @@ MainComponent::MainComponent()
         setFolderButton.setButtonText("Change Folder");
     }
 
-    // Set audio channels
     setAudioChannels(2, 2);
-
-    // Start GUI timer for playhead updates
     startTimerHz(15);
-
-    // Set window size
     setSize(2400, 1300);
 }
 
 MainComponent::~MainComponent()
 {
-    // --- NEU: Deaktiviere das Design, bevor die Komponente zerstört wird ---
     setLookAndFeel(nullptr);
-
     shutdownAudio();
 }
 
 void MainComponent::initializeManagers()
 {
-    // 1. Create SampleManager
     sampleManager = std::make_unique<SampleManager>();
-
-    // 2. Create TrackManager
     trackManager = std::make_unique<TrackManager>(formatManager);
-
-    // 3. Create PlaybackController
     playbackController = std::make_unique<PlaybackController>();
 
-    // 4. Create AudioEngine with interfaces
     audioEngine = std::make_unique<AudioEngine>(
         trackManager.get(),
         playbackController.get()
     );
 
-    // 5. Create PanelManager
     panelManager = std::make_unique<PanelManager>();
 
-    // 6. Create PatternGenerator
     patternGenerator = std::make_unique<PatternGenerator>(
         *trackManager,
         *sampleManager,
@@ -84,46 +60,42 @@ void MainComponent::initializeManagers()
             audioEngine->setBPM(newBpm);
         }
     );
+
+    // --- NEU: Initialisiere den Wooting Manager für analoge Eingaben ---
+    wootingManager = std::make_unique<WootingManager>(audioEngine->getWavetableEngine());
 }
 
 void MainComponent::initializeUI()
 {
-    // Play button
     playButton.setButtonText("Play");
     playButton.setColour(juce::TextButton::buttonColourId, getNeonPink());
     playButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     addAndMakeVisible(playButton);
 
-    // Stop button
     stopButton.setButtonText("Stop");
     stopButton.setColour(juce::TextButton::buttonColourId, getNeonCyan());
     stopButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     addAndMakeVisible(stopButton);
 
-    // Set folder button
     setFolderButton.setButtonText("Set SuperDirt Folder");
     setFolderButton.setColour(juce::TextButton::buttonColourId, juce::Colour(50, 50, 70));
     setFolderButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     addAndMakeVisible(setFolderButton);
 
-    // Folder label
     folderLabel.setText("No folder selected", juce::dontSendNotification);
     folderLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
     addAndMakeVisible(folderLabel);
 
-    // Clear All button
     clearAllButton.setButtonText("Clear All");
     clearAllButton.setColour(juce::TextButton::buttonColourId, juce::Colour(80, 30, 30));
     clearAllButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     addAndMakeVisible(clearAllButton);
 
-    // Audio Settings button
     audioSettingsButton.setButtonText("Audio");
     audioSettingsButton.setColour(juce::TextButton::buttonColourId, getDarkBackground());
     audioSettingsButton.setColour(juce::TextButton::textColourOffId, getNeonCyan());
     addAndMakeVisible(audioSettingsButton);
 
-    // BPM slider
     bpmSlider.setRange(60.0, 200.0, 1.0);
     bpmSlider.setValue(120.0);
     bpmSlider.setSliderStyle(juce::Slider::LinearHorizontal);
@@ -137,7 +109,6 @@ void MainComponent::initializeUI()
     addAndMakeVisible(bpmLabel);
     bpmLabel.attachToComponent(&bpmSlider, true);
 
-    // Master volume slider
     masterVolumeSlider.setRange(0.0, 1.0, 0.01);
     masterVolumeSlider.setValue(0.8);
     masterVolumeSlider.setSliderStyle(juce::Slider::LinearHorizontal);
@@ -151,7 +122,6 @@ void MainComponent::initializeUI()
     addAndMakeVisible(masterVolumeLabel);
     masterVolumeLabel.attachToComponent(&masterVolumeSlider, true);
 
-    // Loop length combo box
     loopLengthComboBox.addItem("16 Steps", 16);
     loopLengthComboBox.addItem("32 Steps", 32);
     loopLengthComboBox.addItem("48 Steps", 48);
@@ -166,7 +136,6 @@ void MainComponent::initializeUI()
     loopLengthLabel.setColour(juce::Label::textColourId, juce::Colours::white);
     addAndMakeVisible(loopLengthLabel);
 
-    // Genre combo box
     genreComboBox.addItem("Techno", 1);
     genreComboBox.addItem("House", 2);
     genreComboBox.addItem("Trap", 3);
@@ -179,13 +148,11 @@ void MainComponent::initializeUI()
     genreComboBox.setColour(juce::ComboBox::arrowColourId, getNeonPink());
     addAndMakeVisible(genreComboBox);
 
-    // Generate button
     generateButton.setButtonText("Generate");
     generateButton.setColour(juce::TextButton::buttonColourId, getNeonPink());
     generateButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     addAndMakeVisible(generateButton);
 
-    // Swing slider
     swingSlider.setRange(0.0, 0.75, 0.01);
     swingSlider.setValue(0.0);
     swingSlider.setSliderStyle(juce::Slider::LinearHorizontal);
@@ -199,7 +166,6 @@ void MainComponent::initializeUI()
     addAndMakeVisible(swingLabel);
     swingLabel.attachToComponent(&swingSlider, true);
 
-    // Reverb slider
     reverbSlider.setRange(0.0, 1.0, 0.01);
     reverbSlider.setValue(0.3);
     reverbSlider.setSliderStyle(juce::Slider::LinearHorizontal);
@@ -213,21 +179,18 @@ void MainComponent::initializeUI()
     addAndMakeVisible(reverbLabel);
     reverbLabel.attachToComponent(&reverbSlider, true);
 
-    // Rhythm Explorer toggle button
     rhythmExplorerButton.setButtonText("Rhythm Explorer");
     rhythmExplorerButton.setColour(juce::TextButton::buttonColourId, getNeonPink().withAlpha(0.7f));
     rhythmExplorerButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     rhythmExplorerButton.setClickingTogglesState(true);
     addAndMakeVisible(rhythmExplorerButton);
 
-    // Melody Workstation toggle button
     melodyWorkstationButton.setButtonText("Melody WS");
     melodyWorkstationButton.setColour(juce::TextButton::buttonColourId, getNeonPink().withAlpha(0.7f));
     melodyWorkstationButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     melodyWorkstationButton.setClickingTogglesState(true);
     addAndMakeVisible(melodyWorkstationButton);
 
-    // Wavetable Synth toggle button
     wavetableSynthButton.setButtonText("Wavetable Synth");
     wavetableSynthButton.setColour(juce::TextButton::buttonColourId, getNeonPurple().withAlpha(0.7f));
     wavetableSynthButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
@@ -237,11 +200,9 @@ void MainComponent::initializeUI()
 
 void MainComponent::connectTrackCallbacks()
 {
-    // Connect track callbacks
     trackManager->forEachTrack([this](int i, TrackComponent& track) {
         addAndMakeVisible(&track);
 
-        // Category selection callback
         track.getComboBox().onChange = [this, i] {
             selectedTrackForRhythm = i;
 
@@ -251,7 +212,6 @@ void MainComponent::connectTrackCallbacks()
                 panelManager->getMelodyPanel().setTargetTrack(i);
             }
 
-            // Load sample
             juce::String category = trackManager->getTrack(i).getSelectedCategory();
             if (category.isNotEmpty() && sampleManager->getSampleDirectory().exists())
             {
@@ -259,28 +219,23 @@ void MainComponent::connectTrackCallbacks()
             }
         };
 
-        // Collapse callback
         track.onStateChange = [this] { resized(); };
 
-        // Wavetable editor callback
         track.onOpenWavetableEditor = [this](int trackIndex, std::shared_ptr<WavetableParams> params, std::shared_ptr<WavetableData> wavetable) {
             panelManager->openTrackWavetableEditor(trackIndex, params, wavetable);
         };
     });
 
-    // Set sample categories on all tracks
     trackManager->forEachTrack([this](int, TrackComponent& track) {
         track.setSampleCategories(sampleManager->getSampleCategories());
     });
 
-    // Connect sample manager callback to update tracks
     sampleManager->onCategoriesChanged = [this](const juce::StringArray& categories) {
         trackManager->forEachTrack([&categories](int, TrackComponent& track) {
             track.setSampleCategories(categories);
         });
     };
 
-    // Connect sample load callback
     sampleManager->setSampleLoadCallback([this](int trackIndex, const juce::String& category, const juce::File& directory) {
         if (trackIndex >= 0 && trackIndex < numTracks)
         {
@@ -291,7 +246,6 @@ void MainComponent::connectTrackCallbacks()
 
 void MainComponent::connectPanelCallbacks()
 {
-    // Rhythm Explorer callbacks
     panelManager->getRhythmExplorer().onApplyPattern = [this](int trackIndex, const std::vector<int>& steps, bool clearFirst) {
         if (trackIndex >= 0 && trackIndex < numTracks)
         {
@@ -316,7 +270,6 @@ void MainComponent::connectPanelCallbacks()
         }
     };
 
-    // Melody Panel callbacks
     panelManager->getMelodyPanel().onApplyMelody = [this](int trackIndex, const std::vector<std::pair<int, int>>& stepPitches) {
         if (trackIndex >= 0 && trackIndex < numTracks)
         {
@@ -339,89 +292,61 @@ void MainComponent::connectPanelCallbacks()
 
 void MainComponent::connectUICallbacks()
 {
-    // Play button
     playButton.onClick = [this] { togglePlay(); };
-
-    // Stop button
     stopButton.onClick = [this] { stopPlayback(); };
-
-    // Set folder button
     setFolderButton.onClick = [this] { openFolderChooser(); };
-
-    // Clear All button
-    clearAllButton.onClick = [this] {
-        trackManager->clearAllTracks();
-    };
-
-    // Audio settings button
+    clearAllButton.onClick = [this] { trackManager->clearAllTracks(); };
     audioSettingsButton.onClick = [this] { showAudioSettingsDialog(); };
 
-    // BPM slider
     bpmSlider.onValueChange = [this] {
         playbackController->setBPM(bpmSlider.getValue());
         audioEngine->setBPM(bpmSlider.getValue());
     };
 
-    // Master volume slider
     masterVolumeSlider.onValueChange = [this] {
         audioEngine->setMasterVolume(static_cast<float>(masterVolumeSlider.getValue()));
     };
 
-    // Loop length combo box
     loopLengthComboBox.onChange = [this] {
         audioEngine->setLoopLength(loopLengthComboBox.getSelectedId());
     };
 
-    // Generate button
     generateButton.onClick = [this] {
         if (audioEngine->isPlaying())
             togglePlay();
         patternGenerator->generateSong(static_cast<PatternGenerator::Genre>(genreComboBox.getSelectedId()));
     };
 
-    // Swing slider
     swingSlider.onValueChange = [this] {
         audioEngine->setSwingAmount(static_cast<float>(swingSlider.getValue()));
     };
 
-    // Reverb slider
     reverbSlider.onValueChange = [this] {
         audioEngine->setReverbWetLevel(static_cast<float>(reverbSlider.getValue()));
     };
 
-    // Rhythm Explorer button
     rhythmExplorerButton.onClick = [this] {
         bool visible = rhythmExplorerButton.getToggleState();
         panelManager->setRhythmExplorerVisible(visible);
 
         if (visible)
-        {
             addAndMakeVisible(panelManager->getRhythmExplorerComponent());
-        }
         else
-        {
             removeChildComponent(panelManager->getRhythmExplorerComponent());
-        }
         resized();
     };
 
-    // Melody Workstation button
     melodyWorkstationButton.onClick = [this] {
         bool visible = melodyWorkstationButton.getToggleState();
         panelManager->setMelodyPanelVisible(visible);
 
         if (visible)
-        {
             addAndMakeVisible(panelManager->getMelodyPanelComponent());
-        }
         else
-        {
             removeChildComponent(panelManager->getMelodyPanelComponent());
-        }
         resized();
     };
 
-    // Wavetable Synth button
     wavetableSynthButton.onClick = [this] {
         bool visible = wavetableSynthButton.getToggleState();
         panelManager->setWavetableSynthVisible(visible, &audioEngine->getWavetableEngine());
@@ -430,10 +355,7 @@ void MainComponent::connectUICallbacks()
 
 void MainComponent::prepareToPlay(int samplesPerBlockExpected, double sampleRate)
 {
-    // Prepare TrackManager audio
     trackManager->prepareAudio(sampleRate, samplesPerBlockExpected);
-
-    // Prepare AudioEngine
     audioEngine->prepareToPlay(samplesPerBlockExpected, sampleRate);
 }
 
@@ -466,7 +388,6 @@ void MainComponent::resized()
 
     auto area = bounds.reduced(10);
 
-    // Reserve space for side panels
     const int rhythmExplorerWidth = 280;
     const int melodyPanelWidth = 350;
     juce::Rectangle<int> rhythmExplorerArea;
@@ -491,14 +412,12 @@ void MainComponent::resized()
         area.removeFromRight(10);
     }
 
-    // Control area - TWO ROWS
     const int controlHeight = 90;
     auto controlArea = area.removeFromTop(controlHeight);
 
     auto topRow = controlArea.removeFromTop(45);
     auto bottomRow = controlArea;
 
-    // TOP ROW: Play, Stop, Clear, Folder, BPM, Master
     const int rowY = 5;
     const int btnHeight = 35;
     const int sliderHeight = 30;
@@ -524,7 +443,6 @@ void MainComponent::resized()
     xPos += 130;
     audioSettingsButton.setBounds(xPos, rowY, 60, btnHeight);
 
-    // BOTTOM ROW: Loop, Genre, Generate, Swing, Reverb, Panels
     xPos = 10;
     const int bottomY = 50;
 
@@ -556,7 +474,6 @@ void MainComponent::resized()
     if (xPos + 110 < area.getWidth())
         wavetableSynthButton.setBounds(xPos, bottomY, 110, btnHeight);
 
-    // DYNAMIC TRACK HEIGHTS
     const int trackGap = 5;
     const int expandedHeight = 165;
     const int collapsedHeight = 45;
@@ -567,7 +484,6 @@ void MainComponent::resized()
         area.removeFromTop(trackGap);
     });
 
-    // SIDE PANELS
     if (panelManager->isRhythmExplorerVisible() && rhythmExplorerArea.getWidth() > 0)
     {
         panelManager->getRhythmExplorerComponent()->setBounds(rhythmExplorerArea.reduced(5));

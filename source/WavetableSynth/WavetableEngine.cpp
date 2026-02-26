@@ -85,11 +85,11 @@ void WavetableEngine::handleMidiEvent(const juce::MidiMessage& message)
 {
     if (message.isNoteOn())
     {
-        noteOn(message.getNoteNumber(), message.getFloatVelocity());
+        noteOn(message.getChannel(), message.getNoteNumber(), message.getFloatVelocity());
     }
     else if (message.isNoteOff())
     {
-        noteOff(message.getNoteNumber());
+        noteOff(message.getChannel(), message.getNoteNumber());
     }
     else if (message.isPitchWheel())
     {
@@ -104,14 +104,12 @@ void WavetableEngine::handleMidiEvent(const juce::MidiMessage& message)
     }
 }
 
-void WavetableEngine::noteOn(int midiNote, float velocity)
+void WavetableEngine::noteOn(int channel, int midiNote, float velocity)
 {
-    int channel = 1;  // Channel 1 for now
     synth.noteOn(channel, midiNote, velocity);
 }
 
-void WavetableEngine::noteOff(int midiNote)
+void WavetableEngine::noteOff(int channel, int midiNote)
 {
-    int channel = 1;
     synth.noteOff(channel, midiNote, 1.0f, true);
 }

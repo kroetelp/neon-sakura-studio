@@ -101,15 +101,13 @@ private:
 
     // RNG for probability modifier (seeded for reproducibility)
     std::mt19937 probabilityRng{42};
+    std::uniform_int_distribution<int> probDist{1, 100};
 
     // Buffers
     std::array<std::unique_ptr<juce::AudioBuffer<float>>, numTracks> trackBuffers;
 
-    // Pre-allocated modulation filters (avoid allocation in audio thread)
-    using FilterProcessor = juce::dsp::ProcessorDuplicator<
-        juce::dsp::IIR::Filter<float>,
-        juce::dsp::IIR::Coefficients<float>>;
-    std::array<std::unique_ptr<FilterProcessor>, numTracks> modulationFilters;
+    // StateVariableTPTFilter is safe for real-time parameter modulation without allocations!
+    std::array<std::unique_ptr<juce::dsp::StateVariableTPTFilter<float>>, numTracks> modulationFilters;
 
     // Effects
     juce::Reverb masterReverb;

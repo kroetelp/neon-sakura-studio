@@ -34,12 +34,23 @@ void AudioEngine::prepareToPlay(int samplesPerBlockExpected, double newSampleRat
     wavetableEngine.prepareToPlay(samplesPerBlockExpected, newSampleRate);
     wavetableBuffer = std::make_unique<juce::AudioBuffer<float>>(2, samplesPerBlockExpected);
 
+    // Filter Spezifikationen vorbereiten
+    juce::dsp::ProcessSpec spec;
+    spec.sampleRate = newSampleRate;
+    spec.maximumBlockSize = samplesPerBlockExpected;
+    spec.numChannels = 2;
+
     // Pre-allocate track buffers and modulation filters
     for (int i = 0; i < numTracks; ++i)
     {
         trackBuffers[i] = std::make_unique<juce::AudioBuffer<float>>(2, samplesPerBlockExpected);
-        modulationFilters[i] = std::make_unique<FilterProcessor>();
+        
+        // Initialisiere real-time sicheren Filter
+        modulationFilters[i] = std::make_unique<juce::dsp::StateVariableTPTFilter<float>>();
+        modulationFilters[i]->setType(juce::dsp::StateVariableTPTFilterType::lowpass);
+        modulationFilters[i]->prepare(spec);
         modulationFilters[i]->reset();
+        
         trackProvider->getSynthesiser(i).setCurrentPlaybackSampleRate(newSampleRate);
     }
 
@@ -64,9 +75,6 @@ void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferTo
     const float swingVal = swingAmount.load();
 
     std::array<juce::MidiBuffer, numTracks> trackMidiBuffers;
-
-    // Random number generator for probability modifier
-    std::uniform_int_distribution<int> probDist(1, 100);
 
     if (localIsPlaying && localSamplesPerStep > 0)
     {
@@ -385,23 +393,6 @@ void AudioEngine::renderAndMixTracks(const juce::AudioSourceChannelInfo& bufferT
         // Get track type
         const TrackType trackType = trackProvider->getTrackType(trackIdx);
 
-        // Apply wavetable modulation to track parameters if enabled (sampler tracks only)
-        if (trackType == TrackType::Sampler && isModulatorMode && trackProvider->getWavetableModulationEnabled(trackIdx))
-        {
-            float cutoffMod = wavetableEngine.getModulationValue(trackIdx, ModulationTarget::Filter_Cutoff);
-            float pitchMod = wavetableEngine.getModulationValue(trackIdx, ModulationTarget::Osc1_Pitch);
-
-            if (cutoffMod != 0.0f)
-            {
-                float currentCutoff = trackProvider->getCutoff(trackIdx);
-                float modFactor = 1.0f + (cutoffMod * 2.0f);
-                float newCutoff = currentCutoff * modFactor;
-                newCutoff = juce::jlimit(20.0f, 20000.0f, newCutoff);
-                (void)newCutoff;  // TODO: Apply to filter
-            }
-            (void)pitchMod;  // TODO: Apply pitch modulation
-        }
-
         // Use pre-allocated buffer
         auto& tempBuffer = *trackBuffers[trackIdx];
 
@@ -436,14 +427,16 @@ void AudioEngine::renderAndMixTracks(const juce::AudioSourceChannelInfo& bufferT
             if (isModulatorMode && trackProvider->getWavetableModulationEnabled(trackIdx))
             {
                 float cutoffMod = wavetableEngine.getModulationValue(trackIdx, ModulationTarget::Filter_Cutoff);
+                
                 if (cutoffMod != 0.0f)
                 {
                     float currentCutoff = trackProvider->getCutoff(trackIdx);
                     float modFactor = 1.0f + (cutoffMod * 2.0f);
                     float newCutoff = juce::jlimit(20.0f, 20000.0f, currentCutoff * modFactor);
 
-                    *modulationFilters[trackIdx]->state = *juce::dsp::IIR::Coefficients<float>::makeLowPass(
-                        currentSampleRate, newCutoff, 0.5f);
+                    // Aktualisiere Parameter sicher für Echtzeit ohne Allokation
+                    modulationFilters[trackIdx]->setCutoffFrequency(newCutoff);
+                    modulationFilters[trackIdx]->setResonance(0.5f); // Oder hier dynamische Resonanz reinholen
 
                     juce::dsp::AudioBlock<float> block(tempBuffer);
                     modulationFilters[trackIdx]->process(juce::dsp::ProcessContextReplacing<float>(block));
