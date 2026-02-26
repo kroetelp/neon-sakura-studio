@@ -91,7 +91,7 @@ void PanelManager::setWavetableSynthVisible(bool visible, WavetableEngine* engin
 }
 
 // Per-track Wavetable Editor
-void PanelManager::openTrackWavetableEditor(int trackIndex, std::shared_ptr<WavetableParams> params)
+void PanelManager::openTrackWavetableEditor(int trackIndex, std::shared_ptr<WavetableParams> params, std::shared_ptr<WavetableData> wavetableData)
 {
     if (!params)
         return;
@@ -106,6 +106,12 @@ void PanelManager::openTrackWavetableEditor(int trackIndex, std::shared_ptr<Wave
     else
     {
         trackWavetableEditor->setSharedParams(params);
+    }
+
+    // Set wavetable data if available
+    if (wavetableData)
+    {
+        trackWavetableEditor->setWavetableData(wavetableData);
     }
 
     // Create window if needed

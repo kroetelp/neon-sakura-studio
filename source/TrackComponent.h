@@ -13,6 +13,7 @@
 
 class WavetableSynth;
 class WavetableParams;
+class WavetableData;
 
 // Custom step button with right-click support for modifiers and neon glow
 class StepButton : public juce::TextButton
@@ -105,7 +106,7 @@ public:
     std::function<void()> onStateChange;
 
     // Callback to open wavetable editor (called when WT Edit button is clicked)
-    std::function<void(int trackIndex, std::shared_ptr<WavetableParams> params)> onOpenWavetableEditor;
+    std::function<void(int trackIndex, std::shared_ptr<WavetableParams> params, std::shared_ptr<WavetableData> wavetable)> onOpenWavetableEditor;
 
     // Sample selection helpers
     void changeSampleIndex(int delta);

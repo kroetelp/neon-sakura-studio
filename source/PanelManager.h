@@ -18,6 +18,7 @@ class MelodyPanel;
 class WavetableSynthEditor;
 class WavetableEngine;
 class WavetableParams;
+class WavetableData;
 
 class PanelManager
 {
@@ -44,7 +45,7 @@ public:
     bool isWavetableSynthVisible() const { return wavetableSynthVisible; }
 
     // Per-track Wavetable Editor (uses shared params)
-    void openTrackWavetableEditor(int trackIndex, std::shared_ptr<WavetableParams> params);
+    void openTrackWavetableEditor(int trackIndex, std::shared_ptr<WavetableParams> params, std::shared_ptr<WavetableData> wavetableData);
     void closeTrackWavetableEditor();
     bool isTrackWavetableEditorOpen() const { return trackWavetableWindow != nullptr && trackWavetableWindow->isVisible(); }
     int getCurrentEditingTrack() const { return currentEditingTrack; }

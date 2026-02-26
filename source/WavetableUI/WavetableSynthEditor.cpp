@@ -10,6 +10,8 @@
 WavetableSynthEditor::WavetableSynthEditor(WavetableEngine& externalEngine)
     : engine(&externalEngine), isEngineMode(true)
 {
+    setLookAndFeel(&customLookAndFeel); 
+
     sharedParams = engine->getSynthesiser().getSharedParams();
 
     presetManager = std::make_unique<WavetablePresetManager>();
@@ -53,6 +55,8 @@ WavetableSynthEditor::WavetableSynthEditor(WavetableEngine& externalEngine)
 WavetableSynthEditor::WavetableSynthEditor(std::shared_ptr<WavetableParams> params)
     : engine(nullptr), sharedParams(params), isEngineMode(false)
 {
+    setLookAndFeel(&customLookAndFeel);
+
     presetManager = std::make_unique<WavetablePresetManager>();
     wavetableDisplay = std::make_unique<WavetableDisplay>();
     addAndMakeVisible(wavetableDisplay.get());
@@ -96,9 +100,20 @@ WavetableSynthEditor::WavetableSynthEditor(std::shared_ptr<WavetableParams> para
 
 WavetableSynthEditor::~WavetableSynthEditor()
 {
+    setLookAndFeel(nullptr);
+
     if (sharedParams)
         sharedParams->removeListener(this);
     stopTimer();
+}
+
+void WavetableSynthEditor::setWavetableData(std::shared_ptr<WavetableData> newWavetable)
+{
+    loadedWavetable = newWavetable;
+    if (wavetableDisplay)
+    {
+        wavetableDisplay->setWavetable(loadedWavetable);
+    }
 }
 
 void WavetableSynthEditor::setSharedParams(std::shared_ptr<WavetableParams> newParams)
@@ -558,9 +573,14 @@ void WavetableSynthEditor::connectUIToSharedParams()
     filterSection->connectToSharedParams(sharedParams);
     envelopeSection->connectToSharedParams(sharedParams);
 
-    if (wavetableDisplay && loadedWavetable)
+    if (wavetableDisplay)
     {
-        wavetableDisplay->setWavetable(loadedWavetable);
+        wavetableDisplay->connectToSharedParams(sharedParams);
+        
+        if (loadedWavetable)
+        {
+            wavetableDisplay->setWavetable(loadedWavetable);
+        }
     }
 }
 
@@ -569,10 +589,8 @@ void WavetableSynthEditor::updateUIFromParams()
     if (!sharedParams)
         return;
 
-    // HIer ist das fehlende Update-Herzstück!
     masterVolumeSlider.setValue(sharedParams->getMasterLevel(), juce::dontSendNotification);
 
-    // Alle Oszillatoren aktualisieren
     for (int i = 0; i < 3; ++i)
     {
         auto* osc = (i == 0) ? osc1Section.get() : (i == 1) ? osc2Section.get() : osc3Section.get();
@@ -587,7 +605,6 @@ void WavetableSynthEditor::updateUIFromParams()
         );
     }
 
-    // Filter Sektion aktualisieren
     filterSection->updateFromParams(
         sharedParams->getFilterCutoff(),
         sharedParams->getFilterResonance(),
@@ -595,13 +612,18 @@ void WavetableSynthEditor::updateUIFromParams()
         sharedParams->getFilterMode()
     );
 
-    // Envelope Sektion aktualisieren
     envelopeSection->updateFromParams(
         sharedParams->getEnvAttack(),
         sharedParams->getEnvDecay(),
         sharedParams->getEnvSustain(),
         sharedParams->getEnvRelease()
     );
+
+    // --- FIX: Sicherstellen, dass das Display sich beim Track-Wechsel anpasst ---
+    if (wavetableDisplay)
+    {
+        wavetableDisplay->refresh();
+    }
 }
 
 void WavetableSynthEditor::triggerAsyncUpdate()

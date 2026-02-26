@@ -8,9 +8,13 @@
 #include "RhythmExplorer.h"
 #include "MelodyPanel.h"
 #include "TrackComponent.h"
+#include "WavetableSynth/WavetableData.h"
 
 MainComponent::MainComponent()
 {
+    // --- NEU: Aktiviere unser eigenes Design für das gesamte Hauptfenster ---
+    setLookAndFeel(&customLookAndFeel);
+
     // Register audio formats first
     formatManager.registerBasicFormats();
 
@@ -45,6 +49,9 @@ MainComponent::MainComponent()
 
 MainComponent::~MainComponent()
 {
+    // --- NEU: Deaktiviere das Design, bevor die Komponente zerstört wird ---
+    setLookAndFeel(nullptr);
+
     shutdownAudio();
 }
 
@@ -256,8 +263,8 @@ void MainComponent::connectTrackCallbacks()
         track.onStateChange = [this] { resized(); };
 
         // Wavetable editor callback
-        track.onOpenWavetableEditor = [this](int trackIndex, std::shared_ptr<WavetableParams> params) {
-            panelManager->openTrackWavetableEditor(trackIndex, params);
+        track.onOpenWavetableEditor = [this](int trackIndex, std::shared_ptr<WavetableParams> params, std::shared_ptr<WavetableData> wavetable) {
+            panelManager->openTrackWavetableEditor(trackIndex, params, wavetable);
         };
     });
 

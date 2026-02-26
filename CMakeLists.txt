@@ -122,6 +122,8 @@ target_sources(NeonSakuraStudio
     source/Modulation/ModulationMatrix.cpp
 
     # Wavetable UI
+    source/WavetableUI/NeonSakuraLookAndFeel.h
+    source/WavetableUI/NeonSakuraLookAndFeel.cpp
     source/WavetableUI/WavetableSynthEditor.h
     source/WavetableUI/WavetableSynthEditor.cpp
     source/WavetableUI/OscillatorSection.h

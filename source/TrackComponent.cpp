@@ -1,6 +1,7 @@
 #include "TrackComponent.h"
 #include "WavetableSynth/WavetableSynth.h"
 #include "WavetableSynth/WavetableParams.h"
+#include "WavetableSynth/WavetableData.h"
 #include <fstream>
 
 // Simple file logging for debugging
@@ -141,7 +142,10 @@ TrackComponent::TrackComponent(int trackIndex_, juce::AudioFormatManager& format
     wavetableEditorButton.onClick = [this] {
         if (onOpenWavetableEditor)
         {
-            onOpenWavetableEditor(trackIndex, audioProcessor.getWavetableParams());
+            auto wavetableData = audioProcessor.getWavetableSynth()
+                ? audioProcessor.getWavetableSynth()->getWavetable()
+                : nullptr;
+            onOpenWavetableEditor(trackIndex, audioProcessor.getWavetableParams(), wavetableData);
         }
     };
 

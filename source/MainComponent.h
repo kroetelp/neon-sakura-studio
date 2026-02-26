@@ -31,6 +31,9 @@
 #include <atomic>
 #include <memory>
 
+// --- NEU: Unser LookAndFeel einbinden ---
+#include "WavetableUI/NeonSakuraLookAndFeel.h" 
+
 // Forward declarations
 class TrackManager;
 class SampleManager;
@@ -60,6 +63,9 @@ public:
 
 private:
     static constexpr int numTracks = 8;
+
+    // --- NEU: Instanz unseres eigenen Designs ---
+    NeonSakuraLookAndFeel customLookAndFeel;
 
     // ========================================================================
     // MANAGERS AND CONTROLLERS (Decoupled responsibilities)

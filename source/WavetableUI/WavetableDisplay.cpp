@@ -3,11 +3,8 @@
 
 WavetableDisplay::WavetableDisplay()
 {
-    // Create default wavetable
     wavetableData = std::make_shared<WavetableData>();
     updateWaveform();
-
-    // Start animation timer
     startTimerHz(30);
 }
 
@@ -19,9 +16,15 @@ WavetableDisplay::~WavetableDisplay()
 void WavetableDisplay::connectToParams(WavetableVoice::VoiceParams& p)
 {
     params = &p;
+    sharedParams = nullptr; 
+    startTimerHz(60);  
+}
 
-    // Update morph position from params
-    startTimerHz(60);  // Faster updates when connected
+void WavetableDisplay::connectToSharedParams(std::shared_ptr<WavetableParams> p)
+{
+    sharedParams = p;
+    params = nullptr; 
+    startTimerHz(60);
 }
 
 void WavetableDisplay::setWavetable(std::shared_ptr<WavetableData> data)
@@ -33,6 +36,12 @@ void WavetableDisplay::setWavetable(std::shared_ptr<WavetableData> data)
 
 void WavetableDisplay::refresh()
 {
+    // --- FIX: Garantiert den absolut neuesten Morph-Wert beim Preset-Laden abgreifen ---
+    if (sharedParams)
+        currentMorphPosition = sharedParams->getOscMorph(selectedOscillator);
+    else if (params)
+        currentMorphPosition = params->oscMorphs[selectedOscillator].load();
+
     updateWaveform();
     repaint();
 }
@@ -47,19 +56,24 @@ void WavetableDisplay::updateWaveform()
 
 void WavetableDisplay::timerCallback()
 {
-    if (params)
+    float newMorph = currentMorphPosition;
+
+    if (sharedParams)
     {
-        // Get morph position from first active oscillator
-        float newMorph = params->oscMorphs[0].load();
-        if (std::abs(newMorph - currentMorphPosition) > 0.001f)
-        {
-            currentMorphPosition = newMorph;
-            updateWaveform();
-            repaint();
-        }
+        newMorph = sharedParams->getOscMorph(selectedOscillator);
+    }
+    else if (params)
+    {
+        newMorph = params->oscMorphs[selectedOscillator].load();
     }
 
-    // Animation phase
+    if (std::abs(newMorph - currentMorphPosition) > 0.001f)
+    {
+        currentMorphPosition = newMorph;
+        updateWaveform();
+        repaint();
+    }
+
     animationPhase += 0.05f;
     if (animationPhase > 1.0f)
         animationPhase -= 1.0f;
@@ -72,13 +86,16 @@ void WavetableDisplay::mouseDown(const juce::MouseEvent& e)
 
 void WavetableDisplay::mouseDrag(const juce::MouseEvent& e)
 {
-    // Horizontal position controls morph
     float newMorph = static_cast<float>(e.x) / getWidth();
     newMorph = juce::jlimit(0.0f, 1.0f, newMorph);
 
     currentMorphPosition = newMorph;
 
-    if (params)
+    if (sharedParams)
+    {
+        sharedParams->setOscMorph(selectedOscillator, newMorph);
+    }
+    else if (params)
     {
         params->oscMorphs[selectedOscillator].store(newMorph);
     }
@@ -122,11 +139,9 @@ void WavetableDisplay::paint(juce::Graphics& g)
 {
     auto bounds = getLocalBounds();
 
-    // Background
     g.setColour(getPanelBackground());
     g.fillRoundedRectangle(bounds.toFloat(), 5);
 
-    // Grid lines
     g.setColour(juce::Colours::white.withAlpha(0.1f));
     auto innerBounds = bounds.reduced(10);
     for (int i = 0; i <= 4; ++i)
@@ -140,29 +155,23 @@ void WavetableDisplay::paint(juce::Graphics& g)
         g.drawVerticalLine(static_cast<int>(x), innerBounds.getY(), innerBounds.getBottom());
     }
 
-    // Draw waveform
     auto path = createWaveformPath(innerBounds.toFloat());
 
-    // Glow effect
     melatonin::DropShadow glow(getNeonCyan(), 6, {0, 0});
     glow.render(g, path);
 
-    // Main waveform
     g.setColour(getNeonCyan());
     g.strokePath(path, juce::PathStrokeType(2.0f));
 
-    // Morph position indicator
     float indicatorX = innerBounds.getX() + currentMorphPosition * innerBounds.getWidth();
     g.setColour(getNeonPink());
     g.drawVerticalLine(static_cast<int>(indicatorX), innerBounds.getY(), innerBounds.getBottom());
 
-    // Morph position text
     g.setColour(juce::Colours::white);
     g.setFont(juce::Font(10.0f));
     g.drawText(juce::String(currentMorphPosition, 2), innerBounds.getX(), innerBounds.getBottom() - 15,
                50, 15, juce::Justification::left, false);
 
-    // Wavetable name
     if (wavetableData)
     {
         g.setColour(getNeonPurple());
@@ -171,7 +180,6 @@ void WavetableDisplay::paint(juce::Graphics& g)
                    juce::Justification::centred, false);
     }
 
-    // Border
     g.setColour(getNeonCyan().withAlpha(0.5f));
     g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(1), 5, 1);
 }

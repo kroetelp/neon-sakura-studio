@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "../WavetableSynth/WavetableVoice.h"
 #include "../WavetableSynth/WavetableData.h"
+#include "../WavetableSynth/WavetableParams.h" // <--- NEU: Für sharedParams
 #include <memory>
 
 /**
@@ -24,8 +25,11 @@ public:
     void resized() override;
     void timerCallback() override;
 
-    // Connect to parameters
+    // Connect to parameters (Legacy/Engine Mode)
     void connectToParams(WavetableVoice::VoiceParams& params);
+
+    // --- NEU: Connect to parameters (Track/Modulator Mode) ---
+    void connectToSharedParams(std::shared_ptr<WavetableParams> params);
 
     // Set wavetable data
     void setWavetable(std::shared_ptr<WavetableData> data);
@@ -40,6 +44,9 @@ public:
 private:
     std::shared_ptr<WavetableData> wavetableData;
     WavetableVoice::VoiceParams* params = nullptr;
+    
+    // --- NEU: Speichert den sicheren Pointer ---
+    std::shared_ptr<WavetableParams> sharedParams;
 
     int selectedOscillator = 0;
     float currentMorphPosition = 0.0f;
