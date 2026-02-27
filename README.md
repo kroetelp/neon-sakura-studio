@@ -1,7 +1,7 @@
 # Neon Sakura Studio
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/licenses/MIT)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg)](https://github.com/kroetelp/NeonSakuraStudio)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg)](https://github.com/kroetelp/Neon-Sakura-Studio)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-orange.svg)](https://en.cppreference.com/w/cpp/20)
 [![JUCE](https://img.shields.io/badge/JUCE-8.0.4-green.svg)](https://juce.com/)
 
