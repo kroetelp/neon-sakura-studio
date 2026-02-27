@@ -30,27 +30,30 @@ void AudioEngine::prepareToPlay(int samplesPerBlockExpected, double newSampleRat
     reverbParams.width = 1.0f;
     masterReverb.setParameters(reverbParams);
 
+    // Use maximum buffer size to prevent dynamic allocation in audio thread
+    const int safeBufferSize = juce::jmax(samplesPerBlockExpected, maxBufferSize);
+
     // Initialize Wavetable Synth
-    wavetableEngine.prepareToPlay(samplesPerBlockExpected, newSampleRate);
-    wavetableBuffer = std::make_unique<juce::AudioBuffer<float>>(2, samplesPerBlockExpected);
+    wavetableEngine.prepareToPlay(safeBufferSize, newSampleRate);
+    wavetableBuffer = std::make_unique<juce::AudioBuffer<float>>(2, safeBufferSize);
 
     // Filter Spezifikationen vorbereiten
     juce::dsp::ProcessSpec spec;
     spec.sampleRate = newSampleRate;
-    spec.maximumBlockSize = samplesPerBlockExpected;
+    spec.maximumBlockSize = static_cast<juce::uint32>(safeBufferSize);
     spec.numChannels = 2;
 
-    // Pre-allocate track buffers and modulation filters
+    // Pre-allocate track buffers with maximum size (NO allocation during playback!)
     for (int i = 0; i < numTracks; ++i)
     {
-        trackBuffers[i] = std::make_unique<juce::AudioBuffer<float>>(2, samplesPerBlockExpected);
-        
+        trackBuffers[i] = std::make_unique<juce::AudioBuffer<float>>(2, safeBufferSize);
+
         // Initialisiere real-time sicheren Filter
         modulationFilters[i] = std::make_unique<juce::dsp::StateVariableTPTFilter<float>>();
         modulationFilters[i]->setType(juce::dsp::StateVariableTPTFilterType::lowpass);
         modulationFilters[i]->prepare(spec);
         modulationFilters[i]->reset();
-        
+
         trackProvider->getSynthesiser(i).setCurrentPlaybackSampleRate(newSampleRate);
     }
 
@@ -133,8 +136,8 @@ void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferTo
                         }
                         else if (stepState.modifierType == '?')
                         {
-                            // Probability modifier
-                            int roll = probDist(probabilityRng);
+                            // Probability modifier - use fast LCG-based RNG
+                            int roll = probabilityRng.nextInt(100);
                             if (roll <= stepState.modifierValue)
                                 shouldTrigger = true;
                         }
@@ -393,13 +396,11 @@ void AudioEngine::renderAndMixTracks(const juce::AudioSourceChannelInfo& bufferT
         // Get track type
         const TrackType trackType = trackProvider->getTrackType(trackIdx);
 
-        // Use pre-allocated buffer
+        // Use pre-allocated buffer (assert to catch buffer overruns in debug)
         auto& tempBuffer = *trackBuffers[trackIdx];
 
-        if (tempBuffer.getNumSamples() < bufferToFill.numSamples)
-        {
-            tempBuffer.setSize(2, bufferToFill.numSamples);
-        }
+        // Safety check: buffer should never exceed pre-allocated size
+        jassert(tempBuffer.getNumSamples() >= bufferToFill.numSamples);
 
         tempBuffer.clear();
 
@@ -455,10 +456,8 @@ void AudioEngine::renderAndMixTracks(const juce::AudioSourceChannelInfo& bufferT
     // Process Wavetable Synth in Standalone mode
     if (wavetableEngine.getMode() == WavetableEngine::Mode::Standalone)
     {
-        if (wavetableBuffer->getNumSamples() < bufferToFill.numSamples)
-        {
-            wavetableBuffer->setSize(2, bufferToFill.numSamples);
-        }
+        // Safety check: buffer should never exceed pre-allocated size
+        jassert(wavetableBuffer->getNumSamples() >= bufferToFill.numSamples);
 
         wavetableBuffer->clear();
         wavetableMidiBuffer.clear();

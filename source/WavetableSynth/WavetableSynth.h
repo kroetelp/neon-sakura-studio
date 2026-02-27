@@ -94,7 +94,11 @@ private:
     std::array<float, 4> macroValues = { {0.0f, 0.0f, 0.0f, 0.0f} };
 
     // Global velocity fallback for non-voice context (e.g., UI display)
-    std::atomic<float> lastGlobalVelocity { 0.8f }; 
+    std::atomic<float> lastGlobalVelocity { 0.8f };
+
+    // Thread-safe voice count change (UI sets, audio thread applies)
+    // -1 means no pending change
+    std::atomic<int> pendingVoiceCount{ -1 };
 
     float modWheelValue = 0.0f;
     float pitchBendValue = 0.0f;
@@ -102,4 +106,7 @@ private:
     double currentSampleRate = 44100.0;
 
     void setupModulationMatrix();
+
+    // Internal method to apply pending voice changes (called from audio thread only)
+    void applyPendingVoiceChanges();
 };

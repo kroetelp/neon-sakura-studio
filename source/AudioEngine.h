@@ -99,9 +99,33 @@ private:
     std::array<int, numTracks> trackLastStep = {-1, -1, -1, -1, -1, -1, -1, -1};
     std::array<int, numTracks> trackLastRatchet = {-1, -1, -1, -1, -1, -1, -1, -1};
 
-    // RNG for probability modifier (seeded for reproducibility)
-    std::mt19937 probabilityRng{42};
-    std::uniform_int_distribution<int> probDist{1, 100};
+    // Maximum buffer size for safety (prevents dynamic allocation in audio thread)
+    static constexpr int maxBufferSize = 4096;
+
+    // Fast LCG-based RNG for probability modifier (real-time safe, no allocations)
+    class FastRNG
+    {
+    public:
+        explicit FastRNG(uint32_t seed = 42) : state(seed) {}
+
+        // Linear Congruential Generator - fast, deterministic, no heap usage
+        uint32_t next()
+        {
+            state = state * 1103515245u + 12345u;
+            return state;
+        }
+
+        // Returns value in range [1, max]
+        int nextInt(int max)
+        {
+            return static_cast<int>((next() % static_cast<uint32_t>(max)) + 1);
+        }
+
+    private:
+        uint32_t state;
+    };
+
+    FastRNG probabilityRng{42};
 
     // Buffers
     std::array<std::unique_ptr<juce::AudioBuffer<float>>, numTracks> trackBuffers;

@@ -4,6 +4,21 @@
 #include "WavetableUI/WavetableSynthEditor.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
+class ClosableDocumentWindow : public juce::DocumentWindow
+{
+public:
+    ClosableDocumentWindow(const juce::String& title, juce::Colour backgroundColour, int requiredButtons)
+        : DocumentWindow(title, backgroundColour, requiredButtons)
+    {
+    }
+
+    void closeButtonPressed() override
+    {
+        // Versteckt das Fenster einfach, wenn das 'X' geklickt wird
+        setVisible(false);
+    }
+};
+
 PanelManager::PanelManager()
 {
     // Create side panels (but don't show them yet)
@@ -143,11 +158,11 @@ void PanelManager::closeTrackWavetableEditor()
 // Helper to create document window
 std::unique_ptr<juce::DocumentWindow> PanelManager::createDocumentWindow(const juce::String& title, int width, int height)
 {
-    auto window = std::make_unique<juce::DocumentWindow>(
+    // Nutze hier die neue ClosableDocumentWindow Klasse
+    auto window = std::make_unique<ClosableDocumentWindow>(
         title,
         getDarkBackground(),
-        juce::DocumentWindow::allButtons,
-        true
+        juce::DocumentWindow::allButtons
     );
 
     window->setCentrePosition(600, 400);
