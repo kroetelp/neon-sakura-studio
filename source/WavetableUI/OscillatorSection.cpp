@@ -52,7 +52,7 @@ void OscillatorSection::setupSlider(juce::Slider& slider, const juce::String& na
 {
     addAndMakeVisible(slider);
     slider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
-    slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 40, 15);
+    slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 45, 18);
     slider.setColour(juce::Slider::thumbColourId, getNeonPink());
     slider.setColour(juce::Slider::rotarySliderFillColourId, getNeonPink().withAlpha(0.3f));
     slider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colours::darkgrey);
@@ -149,8 +149,11 @@ void OscillatorSection::paint(juce::Graphics& g)
 {
     auto bounds = getLocalBounds();
 
-    // Background
-    g.setColour(getPanelBackground());
+    // Background with Cyberpunk gradient
+    auto gradient = juce::ColourGradient::vertical(
+        getPanelBackground().brighter(0.05f), 0,
+        getPanelBackground().darker(0.2f), (float)bounds.getHeight());
+    g.setGradientFill(gradient);
     g.fillRoundedRectangle(bounds.toFloat(), 5);
 
     // Border
@@ -166,53 +169,53 @@ void OscillatorSection::paint(juce::Graphics& g)
 void OscillatorSection::resized()
 {
     auto bounds = getLocalBounds().reduced(5);
-    bounds.removeFromTop(20);  // Title
+    bounds.removeFromTop(20);  // Platz für den Titel oben lassen
 
-    // Two rows of controls
-    auto row1 = bounds.removeFromTop(bounds.getHeight() / 2);
-    auto row2 = bounds;
+    juce::FlexBox mainBox;
+    mainBox.flexDirection = juce::FlexBox::Direction::column;
 
-    int knobWidth = 55;
-    int spacing = 5;
+    juce::FlexBox row1, row2;
+    row1.flexDirection = juce::FlexBox::Direction::row;
+    row2.flexDirection = juce::FlexBox::Direction::row;
 
-    // Row 1: Level, Morph, Detune, Unison
-    int x = 0;
-    levelLabel.setBounds(row1.removeFromLeft(knobWidth).withTrimmedTop(0).withTrimmedBottom(20));
-    row1.removeFromLeft(spacing);
-    morphLabel.setBounds(row1.removeFromLeft(knobWidth).withTrimmedTop(0).withTrimmedBottom(20));
-    row1.removeFromLeft(spacing);
-    detuneLabel.setBounds(row1.removeFromLeft(knobWidth).withTrimmedTop(0).withTrimmedBottom(20));
+    // WICHTIG: Alle FlexBoxen müssen hier deklariert werden, damit sie bis zum performLayout() existieren!
+    juce::FlexBox kb1, kb2, kb3, kb4, kb5, kb6, kb7;
 
-    // Actual knobs in row 1
-    auto knobRow1 = getLocalBounds().reduced(5);
-    knobRow1.removeFromTop(35);
-    knobRow1.removeFromTop(15);  // Label space
+    // Sicheres Hilfs-Lambda, das bereits existierende FlexBoxen befüllt
+    auto setupKnobBox = [](juce::FlexBox& kb, juce::Component& slider, juce::Component& label) {
+        kb.flexDirection = juce::FlexBox::Direction::column;
+        kb.items.add(juce::FlexItem(label).withHeight(15.0f));
+        kb.items.add(juce::FlexItem(slider).withFlex(1.0f));
+    };
 
-    x = 5;
-    levelSlider.setBounds(x, knobRow1.getY(), 50, 55);
-    x += 55;
-    morphSlider.setBounds(x, knobRow1.getY(), 50, 55);
-    x += 55;
-    detuneSlider.setBounds(x, knobRow1.getY(), 50, 55);
+    // --- Reihe 1 befüllen ---
+    setupKnobBox(kb1, levelSlider, levelLabel);
+    setupKnobBox(kb2, morphSlider, morphLabel);
+    setupKnobBox(kb3, detuneSlider, detuneLabel);
+    
+    row1.items.add(juce::FlexItem(kb1).withFlex(1.0f).withMargin(juce::FlexItem::Margin(0, 5, 0, 5)));
+    row1.items.add(juce::FlexItem(kb2).withFlex(1.0f).withMargin(juce::FlexItem::Margin(0, 5, 0, 5)));
+    row1.items.add(juce::FlexItem(kb3).withFlex(1.0f).withMargin(juce::FlexItem::Margin(0, 5, 0, 5)));
 
-    // Row 2: Spread, Pan, Pitch
-    auto knobRow2 = knobRow1.translated(0, 60);
-    x = 5;
-    panSpreadSlider.setBounds(x, knobRow2.getY(), 50, 55);
-    x += 55;
-    panSlider.setBounds(x, knobRow2.getY(), 50, 55);
-    x += 55;
-    pitchSlider.setBounds(x, knobRow2.getY(), 50, 55);
+    // --- Reihe 2 befüllen ---
+    setupKnobBox(kb4, panSpreadSlider, panSpreadLabel);
+    setupKnobBox(kb5, panSlider, panLabel);
+    setupKnobBox(kb6, pitchSlider, pitchLabel);
 
-    // Labels in row 2
-    x = 5;
-    panSpreadLabel.setBounds(x, knobRow2.getY() - 15, 50, 15);
-    x += 55;
-    panLabel.setBounds(x, knobRow2.getY() - 15, 50, 15);
-    x += 55;
-    pitchLabel.setBounds(x, knobRow2.getY() - 15, 50, 15);
+    // Unison Combo Box (kb7)
+    kb7.flexDirection = juce::FlexBox::Direction::column;
+    kb7.items.add(juce::FlexItem(unisonLabel).withHeight(15.0f));
+    kb7.items.add(juce::FlexItem(unisonCombo).withHeight(20.0f).withMargin(juce::FlexItem::Margin(5, 0, 0, 0)));
 
-    // Unison combo at bottom
-    unisonLabel.setBounds(5, getHeight() - 35, 50, 15);
-    unisonCombo.setBounds(5, getHeight() - 20, 50, 18);
+    row2.items.add(juce::FlexItem(kb4).withFlex(1.0f).withMargin(juce::FlexItem::Margin(0, 5, 0, 5)));
+    row2.items.add(juce::FlexItem(kb5).withFlex(1.0f).withMargin(juce::FlexItem::Margin(0, 5, 0, 5)));
+    row2.items.add(juce::FlexItem(kb6).withFlex(1.0f).withMargin(juce::FlexItem::Margin(0, 5, 0, 5)));
+    row2.items.add(juce::FlexItem(kb7).withFlex(1.0f).withMargin(juce::FlexItem::Margin(0, 5, 0, 5)));
+
+    // Füge beide Reihen zur Hauptbox hinzu
+    mainBox.items.add(juce::FlexItem(row1).withFlex(1.0f).withMargin(juce::FlexItem::Margin(0, 0, 10, 0)));
+    mainBox.items.add(juce::FlexItem(row2).withFlex(1.0f));
+
+    // Layout sicher berechnen
+    mainBox.performLayout(bounds);
 }

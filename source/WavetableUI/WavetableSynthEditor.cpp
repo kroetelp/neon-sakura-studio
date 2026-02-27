@@ -6,6 +6,7 @@
 #include "Oscilloscope.h"
 #include "ModulationGrid.h"
 #include "../WavetableSynth/WavetablePreset.h"
+#include <algorithm>
 
 WavetableSynthEditor::WavetableSynthEditor(WavetableEngine& externalEngine)
     : engine(&externalEngine), isEngineMode(true)
@@ -262,7 +263,7 @@ void WavetableSynthEditor::resized()
     auto wtRow = bounds.removeFromTop(35);
     loadWavetableButton.setBounds(wtRow.removeFromLeft(120));
     wtRow.removeFromLeft(10);
-    wavetableNameLabel.setBounds(wtRow.removeFromLeft(200));
+    wavetableComboBox.setBounds(wtRow.removeFromLeft(300));
 
     auto presetRow = bounds.removeFromTop(35);
     presetLabel.setBounds(presetRow.removeFromLeft(45));
@@ -636,50 +637,114 @@ void WavetableSynthEditor::triggerAsyncUpdate()
 void WavetableSynthEditor::setupWavetableUI()
 {
     addAndMakeVisible(loadWavetableButton);
-    loadWavetableButton.setButtonText("Load Wavetable");
+    loadWavetableButton.setButtonText("WT Folder...");
     loadWavetableButton.setColour(juce::TextButton::buttonColourId, getDarkBackground().brighter(0.1f));
     loadWavetableButton.setColour(juce::TextButton::textColourOnId, getNeonPink());
     loadWavetableButton.setColour(juce::TextButton::textColourOffId, getNeonPink());
     loadWavetableButton.onClick = [this] {
-        loadWavetableFromFile();
+        openWavetableFolder();
     };
 
-    addAndMakeVisible(wavetableNameLabel);
-    wavetableNameLabel.setText("Basic Waveforms", juce::dontSendNotification);
-    wavetableNameLabel.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.8f));
-    wavetableNameLabel.setFont(juce::Font(12.0f));
+    addAndMakeVisible(wavetableComboBox);
+    wavetableComboBox.setColour(juce::ComboBox::backgroundColourId, getDarkBackground().brighter(0.1f));
+    wavetableComboBox.setColour(juce::ComboBox::textColourId, juce::Colours::white);
+    wavetableComboBox.setColour(juce::ComboBox::outlineColourId, getNeonPink());
+    wavetableComboBox.setTextWhenNothingSelected("No Wavetable Selected");
+    wavetableComboBox.onChange = [this] {
+        loadSelectedWavetable();
+    };
 }
 
-void WavetableSynthEditor::loadWavetableFromFile()
+void WavetableSynthEditor::openWavetableFolder()
 {
-    auto chooser = std::make_shared<juce::FileChooser>(
-        "Load Wavetable",
-        juce::File::getSpecialLocation(juce::File::userDocumentsDirectory),
-        "*.wav;*.aiff;*.flac;*.ogg");
+    auto startDir = currentWavetableDir.exists() ? currentWavetableDir
+                                                  : juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
 
-    chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+    auto chooser = std::make_shared<juce::FileChooser>(
+        "Select Wavetable Folder",
+        startDir);
+
+    chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
         [this, chooser](const juce::FileChooser& fc)
         {
             if (fc.getResults().size() > 0)
             {
-                auto file = fc.getResult();
-                auto newWavetable = std::make_shared<WavetableData>();
-                if (newWavetable->loadFromFile(file))
+                auto selectedDir = fc.getResult();
+                if (selectedDir.isDirectory())
                 {
-                    loadedWavetable = newWavetable;
-                    applyLoadedWavetable();
-                    wavetableNameLabel.setText(newWavetable->getName(), juce::dontSendNotification);
-                }
-                else
-                {
-                    juce::AlertWindow::showMessageBoxAsync(
-                        juce::AlertWindow::WarningIcon,
-                        "Load Error",
-                        "Could not load wavetable:\n" + newWavetable->getLastError(),
-                        "OK");
+                    currentWavetableDir = selectedDir;
+                    scanWavetableFolder(selectedDir);
                 }
             }
         });
+}
+
+void WavetableSynthEditor::scanWavetableFolder(const juce::File& dir)
+{
+    wavetableFiles.clear();
+    wavetableComboBox.clear();
+
+    // Rekursive Suche nach Audio-Dateien
+    juce::Array<juce::File> foundFiles;
+    dir.findChildFiles(foundFiles, juce::File::findFiles, true, "*.wav;*.aiff;*.flac;*.ogg");
+
+    wavetableFiles.addArray(foundFiles);
+
+    // Alphabetisch sortieren (natural sort)
+    std::sort(wavetableFiles.begin(), wavetableFiles.end(),
+        [](const juce::File& a, const juce::File& b)
+        {
+            return a.getFullPathName().compareNatural(b.getFullPathName()) < 0;
+        });
+
+    // ComboBox befüllen
+    int itemId = 1;
+    for (const auto& file : wavetableFiles)
+    {
+        // Relativen Pfad berechnen
+        juce::String relativePath = file.getRelativePathFrom(dir);
+
+        // Dateiendung entfernen
+        juce::String displayText = relativePath.upToLastOccurrenceOf(".", false, false);
+
+        // Slashes durch " / " ersetzen für bessere Lesbarkeit
+        displayText = displayText.replace("\\", " / ").replace("/", " / ");
+
+        wavetableComboBox.addItem(displayText, itemId);
+        ++itemId;
+    }
+
+    // Erstes Item automatisch auswählen
+    if (wavetableFiles.size() > 0)
+    {
+        wavetableComboBox.setSelectedId(1, juce::dontSendNotification);
+        loadSelectedWavetable();
+    }
+}
+
+void WavetableSynthEditor::loadSelectedWavetable()
+{
+    int selectedId = wavetableComboBox.getSelectedId();
+
+    if (selectedId < 1 || selectedId > wavetableFiles.size())
+        return;
+
+    const auto& file = wavetableFiles.getReference(selectedId - 1);
+
+    auto newWavetable = std::make_shared<WavetableData>();
+    if (newWavetable->loadFromFile(file))
+    {
+        loadedWavetable = newWavetable;
+        applyLoadedWavetable();
+    }
+    else
+    {
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::AlertWindow::WarningIcon,
+            "Load Error",
+            "Could not load wavetable:\n" + newWavetable->getLastError(),
+            "OK");
+    }
 }
 
 void WavetableSynthEditor::applyLoadedWavetable()

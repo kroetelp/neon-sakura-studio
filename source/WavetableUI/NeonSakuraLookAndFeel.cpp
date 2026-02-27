@@ -35,27 +35,35 @@ void NeonSakuraLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, in
 
     if (slider.isEnabled())
     {
-        // Glow-Effekt (breiter, halb-transparent)
+        // Neon Bloom Glow-Effekt (mehrere Layer für echten Glow)
         juce::Path glowArc;
         glowArc.addCentredArc(centreX, centreY, radius, radius, 0.0f, rotaryStartAngle, angle, true);
-        g.setColour(fillColour.withAlpha(0.3f));
-        g.strokePath(glowArc, juce::PathStrokeType(8.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-        // Innerer heller Ring (der eigentliche Wert)
+        for (float thickness = 14.0f; thickness > 2.0f; thickness -= 3.0f)
+        {
+            g.setColour(fillColour.withAlpha(0.1f));
+            g.strokePath(glowArc, juce::PathStrokeType(thickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+
+        // Heller, solider Kern
         juce::Path valueArc;
         valueArc.addCentredArc(centreX, centreY, radius, radius, 0.0f, rotaryStartAngle, angle, true);
-        g.setColour(fillColour);
-        g.strokePath(valueArc, juce::PathStrokeType(3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour(fillColour.brighter(0.2f));
+        g.strokePath(valueArc, juce::PathStrokeType(2.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
-    // Leuchtender Punkt als Zeiger
+    // Leuchtender Punkt als Zeiger mit Glow
     auto pointerRadius = radius - 7.0f;
-    juce::Path pointer;
-    pointer.addEllipse(centreX + pointerRadius * std::cos(angle - juce::MathConstants<float>::halfPi) - 3.0f,
-                       centreY + pointerRadius * std::sin(angle - juce::MathConstants<float>::halfPi) - 3.0f,
-                       6.0f, 6.0f);
+    auto pointerX = centreX + pointerRadius * std::cos(angle - juce::MathConstants<float>::halfPi);
+    auto pointerY = centreY + pointerRadius * std::sin(angle - juce::MathConstants<float>::halfPi);
+
+    // Glow unter dem Punkt
+    g.setColour(fillColour.withAlpha(0.5f));
+    g.fillEllipse(pointerX - 6.0f, pointerY - 6.0f, 12.0f, 12.0f);
+
+    // Weißer Kern
     g.setColour(juce::Colours::white);
-    g.fillPath(pointer);
+    g.fillEllipse(pointerX - 3.0f, pointerY - 3.0f, 6.0f, 6.0f);
 }
 
 void NeonSakuraLookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int width, int height,

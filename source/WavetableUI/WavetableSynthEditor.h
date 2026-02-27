@@ -78,7 +78,9 @@ private:
     juce::Label presetLabel;
 
     juce::TextButton loadWavetableButton;
-    juce::Label wavetableNameLabel;
+    juce::ComboBox wavetableComboBox;
+    juce::File currentWavetableDir;
+    juce::Array<juce::File> wavetableFiles;
     std::shared_ptr<WavetableData> loadedWavetable;
 
     std::unique_ptr<WavetablePresetManager> presetManager;
@@ -104,7 +106,9 @@ private:
     void applyPresetToUI();
 
     void setupWavetableUI();
-    void loadWavetableFromFile();
+    void openWavetableFolder();
+    void scanWavetableFolder(const juce::File& dir);
+    void loadSelectedWavetable();
     void applyLoadedWavetable();
 
     void handleNoteOn(juce::MidiKeyboardState* source, int midiChannel, int midiNoteNumber, float velocity) override;
