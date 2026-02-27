@@ -93,6 +93,16 @@ void WavetableVoice::applyModulation(float& left, float& right)
     if (!modulationMatrix) return;
     (void)left;
     (void)right;
+    // Modulation is now applied via createModulationContext() in renderNextBlock
+}
+
+ModulationContext WavetableVoice::createModulationContext() const
+{
+    ModulationContext ctx;
+    ctx.velocity = currentVelocity;
+    ctx.aftertouch = 0.0f;  // Per-voice aftertouch not yet implemented
+    ctx.midiNote = currentMidiNote;
+    return ctx;
 }
 
 void WavetableVoice::renderNextBlock(juce::AudioBuffer<float>& buffer, int startSample, int numSamples)
@@ -106,6 +116,9 @@ void WavetableVoice::renderNextBlock(juce::AudioBuffer<float>& buffer, int start
     if (!currentParams && !params)
         return;
 
+    // Create per-voice modulation context for velocity-sensitive modulation
+    ModulationContext modContext = createModulationContext();
+
     float* leftChannel = buffer.getWritePointer(0, startSample);
     float* rightChannel = buffer.getNumChannels() > 1
         ? buffer.getWritePointer(1, startSample)
@@ -113,10 +126,34 @@ void WavetableVoice::renderNextBlock(juce::AudioBuffer<float>& buffer, int start
 
     float masterLevel = currentParams ? currentParams->getMasterLevel() : params->masterLevel.load();
 
+    // Get base filter parameters
     float cutoff = currentParams ? currentParams->getFilterCutoff() : params->filterCutoff.load();
     float resonance = currentParams ? currentParams->getFilterResonance() : params->filterResonance.load();
     float drive = currentParams ? currentParams->getFilterDrive() : params->filterDrive.load();
     int mode = currentParams ? currentParams->getFilterMode() : params->filterMode.load();
+
+    // Apply velocity modulation to filter cutoff if modulation matrix is available
+    if (modulationMatrix)
+    {
+        float cutoffMod = modulationMatrix->getModulationValue(ModulationTarget::Filter_Cutoff, modContext);
+        if (std::abs(cutoffMod) > 0.001f)
+        {
+            // Apply modulation as a multiplier (semitones or frequency scaling)
+            cutoff = juce::jlimit(20.0f, 20000.0f, cutoff * std::pow(2.0f, cutoffMod * 2.0f));
+        }
+
+        float resonanceMod = modulationMatrix->getModulationValue(ModulationTarget::Filter_Resonance, modContext);
+        if (std::abs(resonanceMod) > 0.001f)
+        {
+            resonance = juce::jlimit(0.0f, 1.0f, resonance + resonanceMod * 0.5f);
+        }
+
+        float driveMod = modulationMatrix->getModulationValue(ModulationTarget::Filter_Drive, modContext);
+        if (std::abs(driveMod) > 0.001f)
+        {
+            drive = juce::jlimit(0.0f, 10.0f, drive + driveMod * 2.0f);
+        }
+    }
 
     filter.setCutoff(cutoff);
     filter.setResonance(resonance);

@@ -62,7 +62,9 @@ void MainComponent::initializeManagers()
     );
 
     // --- NEU: Initialisiere den Wooting Manager für analoge Eingaben ---
-    wootingManager = std::make_unique<WootingManager>(audioEngine->getWavetableEngine());
+    wootingManager = std::make_unique<WootingManager>();
+    // Verbinde die Lock-Free Queue mit der WavetableEngine
+    audioEngine->getWavetableEngine().setMidiEventQueue(&wootingManager->getMidiQueue());
 }
 
 void MainComponent::initializeUI()

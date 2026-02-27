@@ -2,6 +2,7 @@
 
 #include "WavetableSynth.h"
 #include "../Modulation/ModulationSource.h"
+#include "../MidiEventQueue.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <memory>
 #include <array>
@@ -60,6 +61,13 @@ public:
     void setMasterVolume(float volume) { masterVolume.store(volume); }
     float getMasterVolume() const { return masterVolume.load(); }
 
+    /**
+     * Set the MIDI event queue for lock-free thread communication
+     * The queue is read by the audio thread during processBlock()
+     */
+    void setMidiEventQueue(MidiEventQueue* queue) { midiEventQueue = queue; }
+    MidiEventQueue* getMidiEventQueue() const { return midiEventQueue; }
+
 private:
     WavetableSynth synth;
 
@@ -74,4 +82,10 @@ private:
 
     // Per-track modulation values cache
     mutable std::array<float, static_cast<int>(ModulationTarget::Count)> cachedModulationValues{};
+
+    // Lock-free MIDI event queue (owned by WootingManager, read by audio thread)
+    MidiEventQueue* midiEventQueue = nullptr;
+
+    // Process MIDI events from the lock-free queue into the MidiBuffer
+    void processMidiEventsFromQueue(juce::MidiBuffer& midiBuffer);
 };

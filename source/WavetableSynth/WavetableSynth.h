@@ -69,7 +69,7 @@ public:
     const ModulationMatrix& getModulationMatrix() const { return modulationMatrix; }
 
     void processModulations();
-    float getModulatorValue(ModulationSource source) const;
+    float getModulatorValue(ModulationSource source, const ModulationContext& context = {}) const;
 
     // Macro controls
     void setMacroValue(int macroIndex, float value);
@@ -92,9 +92,9 @@ private:
     ModulationMatrix modulationMatrix;
 
     std::array<float, 4> macroValues = { {0.0f, 0.0f, 0.0f, 0.0f} };
-    
-    // Für die Modulationsmatrix
-    std::atomic<float> lastVelocity { 0.8f }; 
+
+    // Global velocity fallback for non-voice context (e.g., UI display)
+    std::atomic<float> lastGlobalVelocity { 0.8f }; 
 
     float modWheelValue = 0.0f;
     float pitchBendValue = 0.0f;

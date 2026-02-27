@@ -90,8 +90,45 @@ int ModulationMatrix::findRouting(ModulationSource source, ModulationTarget targ
     return -1;
 }
 
+float ModulationMatrix::getSourceValue(ModulationSource source, const ModulationContext& context) const
+{
+    if (getModulatorValue)
+        return getModulatorValue(source, context);
+    return 0.0f;
+}
+
+float ModulationMatrix::getModulationValue(ModulationTarget target, const ModulationContext& context) const
+{
+    float total = 0.0f;
+
+    for (const auto& routing : routings)
+    {
+        if (!routing.active || std::abs(routing.amount) < 0.001f)
+            continue;
+
+        if (routing.target != target)
+            continue;
+
+        // Get source value with context
+        float sourceValue = getSourceValue(routing.source, context);
+
+        // Convert to bipolar if needed
+        if (!routing.bipolar)
+        {
+            // Source is 0-1, convert to -1 to 1 for bipolar targets
+            sourceValue = sourceValue * 2.0f - 1.0f;
+        }
+
+        // Apply amount and add to total
+        total += sourceValue * routing.amount;
+    }
+
+    return total;
+}
+
 float ModulationMatrix::getModulationValue(ModulationTarget target) const
 {
+    // Legacy: return cached value from last process() call
     int targetIndex = static_cast<int>(target);
     if (targetIndex >= 0 && targetIndex < static_cast<int>(ModulationTarget::Count))
         return targetValues[targetIndex];
@@ -106,19 +143,53 @@ void ModulationMatrix::process()
     if (!getModulatorValue)
         return;
 
-    // Sum up all modulations for each target
+    // Sum up all modulations for each target using empty context
+    ModulationContext emptyContext;
+
     for (const auto& routing : routings)
     {
         if (!routing.active || std::abs(routing.amount) < 0.001f)
             continue;
 
-        // Get source value
-        float sourceValue = getModulatorValue(routing.source);
+        // Get source value with empty context (will use fallback values)
+        float sourceValue = getModulatorValue(routing.source, emptyContext);
 
         // Convert to bipolar if needed
         if (!routing.bipolar)
         {
             // Source is 0-1, convert to -1 to 1 for bipolar targets
+            sourceValue = sourceValue * 2.0f - 1.0f;
+        }
+
+        // Apply amount and add to target
+        int targetIndex = static_cast<int>(routing.target);
+        if (targetIndex >= 0 && targetIndex < static_cast<int>(ModulationTarget::Count))
+        {
+            targetValues[targetIndex] += sourceValue * routing.amount;
+        }
+    }
+}
+
+void ModulationMatrix::processWithContext(const ModulationContext& context)
+{
+    // Reset target values
+    targetValues.fill(0.0f);
+
+    if (!getModulatorValue)
+        return;
+
+    // Sum up all modulations for each target with voice context
+    for (const auto& routing : routings)
+    {
+        if (!routing.active || std::abs(routing.amount) < 0.001f)
+            continue;
+
+        // Get source value with voice context
+        float sourceValue = getModulatorValue(routing.source, context);
+
+        // Convert to bipolar if needed
+        if (!routing.bipolar)
+        {
             sourceValue = sourceValue * 2.0f - 1.0f;
         }
 

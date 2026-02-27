@@ -86,18 +86,19 @@ void WavetableSynth::setNumVoices(int numVoices)
 
 void WavetableSynth::noteOn(int midiChannel, int midiNoteNumber, float velocity)
 {
-    // Velocity speichern für die Mod-Matrix
-    lastVelocity.store(velocity);
-    
-    // Originales JUCE-Verhalten beibehalten
+    // Store global velocity for UI/fallback (non-voice context usage)
+    lastGlobalVelocity.store(velocity);
+
+    // JUCE voice allocator will call WavetableVoice::startNote()
+    // with this velocity, where it gets stored per-voice
     juce::Synthesiser::noteOn(midiChannel, midiNoteNumber, velocity);
 }
 
 void WavetableSynth::setupModulationMatrix()
 {
-    modulationMatrix.setModulatorValueProvider([this](ModulationSource source) -> float
+    modulationMatrix.setModulatorValueProvider([this](ModulationSource source, const ModulationContext& ctx) -> float
     {
-        return getModulatorValue(source);
+        return getModulatorValue(source, ctx);
     });
 }
 
@@ -108,25 +109,35 @@ void WavetableSynth::processModulations()
     modulationMatrix.process();
 }
 
-float WavetableSynth::getModulatorValue(ModulationSource source) const
+float WavetableSynth::getModulatorValue(ModulationSource source, const ModulationContext& ctx) const
 {
     switch (source)
     {
+        // Global LFOs
         case ModulationSource::LFO1: return lfos[0].getCurrentValue();
         case ModulationSource::LFO2: return lfos[1].getCurrentValue();
         case ModulationSource::LFO3: return lfos[2].getCurrentValue();
         case ModulationSource::LFO4: return lfos[3].getCurrentValue();
 
+        // Global Envelopes
         case ModulationSource::Envelope1: return envelopes[0].getCurrentValue();
         case ModulationSource::Envelope2: return envelopes[1].getCurrentValue();
         case ModulationSource::Envelope3: return envelopes[2].getCurrentValue();
 
-        case ModulationSource::Velocity: return lastVelocity.load();
+        // Per-voice sources - use context if available, fallback to global
+        case ModulationSource::Velocity:
+            // Use per-voice velocity from context, fallback to global
+            return ctx.isValid() ? ctx.velocity : lastGlobalVelocity.load();
 
+        case ModulationSource::Aftertouch:
+            // Use per-voice aftertouch from context
+            return ctx.aftertouch;
+
+        // Global MIDI sources
         case ModulationSource::ModWheel: return modWheelValue;
         case ModulationSource::PitchBend: return pitchBendValue;
-        case ModulationSource::Aftertouch: return aftertouchValue;
 
+        // Macros
         case ModulationSource::Macro1: return macroValues[0];
         case ModulationSource::Macro2: return macroValues[1];
         case ModulationSource::Macro3: return macroValues[2];

@@ -64,6 +64,13 @@ public:
     VoiceParams* getParams() { return params; }
     void setParams(VoiceParams* p) { params = p; }
 
+    // Per-voice state accessors
+    float getCurrentVelocity() const { return currentVelocity; }
+    int getCurrentMidiNote() const { return currentMidiNote; }
+
+    // Create modulation context for this voice
+    ModulationContext createModulationContext() const;
+
 private:
     std::array<WavetableOscillator, 3> oscillators;
     SubOscillator subOscillator;

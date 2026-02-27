@@ -1,8 +1,17 @@
 #pragma once
 
+/**
+ * WootingManager - Handles analog keyboard input from Wooting keyboards
+ *
+ * Thread Safety:
+ * - Runs on UI thread (juce::Timer at 200Hz)
+ * - Pushes MIDI events to a lock-free queue instead of directly calling the audio engine
+ * - The audio thread reads from the queue to process events safely
+ */
+
 #include <juce_core/juce_core.h>
 #include <juce_events/juce_events.h>
-#include "WavetableSynth/WavetableEngine.h"
+#include "MidiEventQueue.h"
 
 // Header aus der Wooting SDK
 #include "wooting_analog_wrapper.h"
@@ -11,8 +20,7 @@
 class WootingManager : public juce::Timer
 {
 public:
-    WootingManager(WavetableEngine& synthEngine) 
-        : engine(synthEngine)
+    WootingManager()
     {
         // Initialisiere das Wooting SDK
         int result = wooting_analog_initialise();
@@ -33,6 +41,12 @@ public:
         stopTimer();
         wooting_analog_uninitialise();
     }
+
+    /**
+     * Get the MIDI event queue for the audio thread to read from
+     */
+    MidiEventQueue& getMidiQueue() { return midiQueue; }
+    const MidiEventQueue& getMidiQueue() const { return midiQueue; }
 
     void timerCallback() override
     {
@@ -63,22 +77,21 @@ public:
                 {
                     // Berechne Velocity aus dem initialen Sprung
                     // Je schneller/tiefer der erste registrierte Wert, desto lauter
-                    float velocity = juce::jlimit(0.1f, 1.0f, analogValue * 2.5f); 
-                    
-                    engine.noteOn(1, midiNote, velocity);
+                    float velocity = juce::jlimit(0.1f, 1.0f, analogValue * 2.5f);
+
+                    // LOCK-FREE: Push to queue instead of direct engine call
+                    midiQueue.push(MidiEvent::noteOn(1, static_cast<uint8_t>(midiNote), velocity));
                     activeKeys[hidCode] = analogValue;
                 }
                 // TASTE WIRD GEHALTEN (AFTERTOUCH / MODULATION)
                 else if (activeKeys.count(hidCode))
                 {
-                    // Wenn der Wert sich ändert, sende ggf. Aftertouch oder Pitchbend
+                    // Wenn der Wert sich ändert, sende Aftertouch/Mod-Wheel
                     int aftertouchVal = static_cast<int>(analogValue * 127.0f);
-                    
-                    // Für einen echten Synth-Vibe könnten wir hier Pitch-Bend oder Mod-Wheel senden!
-                    // z.B. Mod-Wheel CC (Controller 1):
-                    juce::MidiMessage modMsg = juce::MidiMessage::controllerEvent(1, 1, aftertouchVal);
-                    engine.handleMidiEvent(modMsg);
-                    
+
+                    // LOCK-FREE: Push Mod-Wheel CC1 to queue
+                    midiQueue.push(MidiEvent::controller(1, 1, static_cast<uint8_t>(aftertouchVal)));
+
                     activeKeys[hidCode] = analogValue;
                 }
             }
@@ -88,13 +101,14 @@ public:
         for (auto it = activeKeys.begin(); it != activeKeys.end(); )
         {
             unsigned short hidCode = it->first;
-            
+
             if (currentFrameKeys.find(hidCode) == currentFrameKeys.end() || currentFrameKeys[hidCode] <= 0.05f)
             {
                 int midiNote = mapHIDToMidi(hidCode);
                 if (midiNote >= 0)
                 {
-                    engine.noteOff(1, midiNote);
+                    // LOCK-FREE: Push note off to queue
+                    midiQueue.push(MidiEvent::noteOff(1, static_cast<uint8_t>(midiNote)));
                 }
                 it = activeKeys.erase(it);
             }
@@ -106,8 +120,9 @@ public:
     }
 
 private:
-    WavetableEngine& engine;
-    
+    // Lock-free queue for MIDI events (UI thread writes, audio thread reads)
+    MidiEventQueue midiQueue;
+
     // Speichert den Status der Tasten (HID Code -> Analoger Wert)
     std::map<unsigned short, float> activeKeys;
 

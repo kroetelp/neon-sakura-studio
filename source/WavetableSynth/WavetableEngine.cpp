@@ -25,6 +25,9 @@ void WavetableEngine::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     if (currentMode.load() != Mode::Standalone)
         return;
 
+    // Process MIDI events from lock-free queue first
+    processMidiEventsFromQueue(midiMessages);
+
     // Process modulations
     synth.processModulations();
 
@@ -112,4 +115,52 @@ void WavetableEngine::noteOn(int channel, int midiNote, float velocity)
 void WavetableEngine::noteOff(int channel, int midiNote)
 {
     synth.noteOff(channel, midiNote, 1.0f, true);
+}
+
+void WavetableEngine::processMidiEventsFromQueue(juce::MidiBuffer& midiBuffer)
+{
+    if (!midiEventQueue)
+        return;
+
+    MidiEvent event;
+    while (midiEventQueue->pop(event))
+    {
+        switch (event.type)
+        {
+            case MidiEvent::NoteOn:
+                if (event.velocity > 0.0f)
+                {
+                    midiBuffer.addEvent(juce::MidiMessage::noteOn(
+                        event.channel, event.noteNumber, event.velocity), 0);
+                }
+                else
+                {
+                    // Velocity 0 = note off
+                    midiBuffer.addEvent(juce::MidiMessage::noteOff(
+                        event.channel, event.noteNumber), 0);
+                }
+                break;
+
+            case MidiEvent::NoteOff:
+                midiBuffer.addEvent(juce::MidiMessage::noteOff(
+                    event.channel, event.noteNumber), 0);
+                break;
+
+            case MidiEvent::Controller:
+                midiBuffer.addEvent(juce::MidiMessage::controllerEvent(
+                    event.channel, event.controllerNum, event.controllerVal), 0);
+                break;
+
+            case MidiEvent::PitchBend:
+                midiBuffer.addEvent(juce::MidiMessage::pitchWheel(
+                    event.channel, event.pitchBendVal + 8192), 0);
+                break;
+
+            case MidiEvent::Aftertouch:
+                // Use channel pressure (global aftertouch) instead of polyphonic aftertouch
+                midiBuffer.addEvent(juce::MidiMessage::channelPressureChange(
+                    event.channel, static_cast<int>(event.aftertouchVal * 127.0f)), 0);
+                break;
+        }
+    }
 }
