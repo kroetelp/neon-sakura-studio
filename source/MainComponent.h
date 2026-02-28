@@ -81,6 +81,8 @@ private:
     juce::Label loopLengthLabel;
     juce::Label folderLabel;
     juce::ComboBox genreComboBox;
+    juce::ComboBox drumTargetTrackCombo;
+    juce::Label drumTargetLabel;
     juce::TextButton generateButton;
     juce::Slider swingSlider;
     juce::Label swingLabel;

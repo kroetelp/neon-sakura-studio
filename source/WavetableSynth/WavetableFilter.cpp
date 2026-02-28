@@ -1,6 +1,11 @@
 #include "WavetableFilter.h"
 #include <cmath>
 
+// Small constant to prevent denormals
+static constexpr float DENORMAL_THRESHOLD = 1e-15f;
+static constexpr float MIN_CUTOFF = 30.0f;   // Minimum cutoff in Hz to prevent instability
+static constexpr float MAX_CUTOFF = 20000.0f;
+
 WavetableFilter::WavetableFilter()
 {
     updateCoefficients();
@@ -37,14 +42,27 @@ void WavetableFilter::updateCoefficients()
     lastResonance = currentResonance;
     lastMode = mode;
 
+    // Clamp cutoff to safe range to prevent numerical instability
+    currentCutoff = juce::jlimit(MIN_CUTOFF, MAX_CUTOFF, currentCutoff);
+
+    // Clamp resonance to prevent extreme Q values
+    currentResonance = juce::jlimit(0.0f, 0.95f, currentResonance);
+
     // Calculate normalized frequency
     float omega = 2.0f * juce::MathConstants<float>::pi * currentCutoff / static_cast<float>(sampleRate);
+
+    // Clamp omega to prevent numerical issues
+    omega = juce::jlimit(0.001f, juce::MathConstants<float>::pi * 0.99f, omega);
+
     float sinOmega = std::sin(omega);
     float cosOmega = std::cos(omega);
 
-    // Q factor from resonance (0-1 -> 0.5 to 20)
-    float Q = 0.5f + currentResonance * 19.5f;
+    // Q factor from resonance (0-0.95 -> 0.5 to 10) - limited to prevent instability
+    float Q = 0.5f + currentResonance * 9.5f;
     float alpha = sinOmega / (2.0f * Q);
+
+    // Ensure alpha doesn't get too small
+    alpha = juce::jmax(alpha, 0.0001f);
 
     switch (mode)
     {
@@ -161,9 +179,15 @@ float WavetableFilter::processSample(float sample, FilterState& state)
     state.y2 = state.y1;
     state.y1 = output;
 
-    // Prevent denormals
-    if (std::abs(output) < 1e-10f)
+    // Prevent denormals - more aggressive threshold
+    if (std::abs(output) < DENORMAL_THRESHOLD)
+    {
         output = 0.0f;
+        state.y1 = 0.0f;  // Also clear state to prevent buildup
+    }
+
+    // Hard clamp output to prevent runaway
+    output = juce::jlimit(-10.0f, 10.0f, output);
 
     return output;
 }

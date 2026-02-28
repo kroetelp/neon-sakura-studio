@@ -22,7 +22,10 @@ public:
     std::function<void(int, const std::vector<std::pair<int, int>>&)> onApplyMelody;
 
     // Set target track
-    void setTargetTrack(int track) { targetTrack = track; }
+    void setTargetTrack(int track) {
+        targetTrack = track;
+        targetTrackCombo.setSelectedId(track + 1, juce::dontSendNotification);
+    }
     int getTargetTrack() const { return targetTrack; }
 
     // Get current parameters
@@ -71,6 +74,10 @@ private:
     // Step count
     juce::Slider stepCountSlider;
     juce::Label stepCountLabel;
+
+    // Target track selection
+    juce::ComboBox targetTrackCombo;
+    juce::Label targetTrackLabel;
 
     // Action buttons
     juce::TextButton generateMelodyBtn;

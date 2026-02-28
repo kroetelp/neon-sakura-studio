@@ -160,6 +160,23 @@ void WavetableVoice::renderNextBlock(juce::AudioBuffer<float>& buffer, int start
     filter.setDrive(drive);
     filter.setMode(static_cast<WavetableFilter::Mode>(mode));
 
+    // Get shaper parameters
+    int shaperMode = currentParams ? currentParams->getShaperMode() : 0;
+    float shaperAmount = currentParams ? currentParams->getShaperAmount() : 0.5f;
+    float shaperMix = currentParams ? currentParams->getShaperMix() : 1.0f;
+
+    waveshaper.setMode(static_cast<Waveshaper::Mode>(shaperMode));
+    waveshaper.setAmount(shaperAmount);
+    waveshaper.setMix(shaperMix);
+
+    // Get FM/AM modulation parameters
+    float fmAmount12 = currentParams ? currentParams->getFMAmount12() : 0.0f;
+    float fmAmount13 = currentParams ? currentParams->getFMAmount13() : 0.0f;
+    float fmAmount23 = currentParams ? currentParams->getFMAmount23() : 0.0f;
+    float amAmount12 = currentParams ? currentParams->getAMAmount12() : 0.0f;
+    float amAmount13 = currentParams ? currentParams->getAMAmount13() : 0.0f;
+    float amAmount23 = currentParams ? currentParams->getAMAmount23() : 0.0f;
+
     for (int i = 0; i < numSamples; ++i)
     {
         float envValue = ampEnvelope.process();
@@ -173,38 +190,154 @@ void WavetableVoice::renderNextBlock(juce::AudioBuffer<float>& buffer, int start
 
         float left = 0.0f, right = 0.0f;
 
-        for (int oscIndex = 0; oscIndex < 3; ++oscIndex)
+        // Store oscillator outputs for FM/AM routing
+        float osc1Output = 0.0f, osc2Output = 0.0f;
+        float osc1Left = 0.0f, osc1Right = 0.0f;
+        float osc2Left = 0.0f, osc2Right = 0.0f;
+
+        // === OSC 1 (Primary Modulator) ===
         {
+            int oscIndex = 0;
             float level = currentParams ? currentParams->getOscLevel(oscIndex) : params->oscLevels[oscIndex].load();
-            if (level < 0.001f) continue;
 
-            auto& osc = oscillators[oscIndex];
+            if (level >= 0.001f)
+            {
+                auto& osc = oscillators[oscIndex];
 
-            float pitchOffset = currentParams ? currentParams->getOscPitchOffset(oscIndex) : params->oscPitchOffsets[oscIndex].load();
-            float freq = calculateFrequency(currentMidiNote, pitchOffset);
-            osc.setFrequency(freq);
-            osc.setLevel(level);
+                float pitchOffset = currentParams ? currentParams->getOscPitchOffset(oscIndex) : params->oscPitchOffsets[oscIndex].load();
+                osc.setFrequency(calculateFrequency(currentMidiNote, pitchOffset));
+                osc.setLevel(level);
 
-            float morph = currentParams ? currentParams->getOscMorph(oscIndex) : params->oscMorphs[oscIndex].load();
-            osc.setMorphPosition(morph);
+                float morph = currentParams ? currentParams->getOscMorph(oscIndex) : params->oscMorphs[oscIndex].load();
+                osc.setMorphPosition(morph);
 
-            float detune = currentParams ? currentParams->getOscDetune(oscIndex) : params->oscDetunes[oscIndex].load();
-            osc.setDetune(detune);
+                float detune = currentParams ? currentParams->getOscDetune(oscIndex) : params->oscDetunes[oscIndex].load();
+                osc.setDetune(detune);
 
-            int unison = currentParams ? currentParams->getOscUnisonCount(oscIndex) : params->oscUnisonCounts[oscIndex].load();
-            osc.setUnisonCount(unison);
+                int unison = currentParams ? currentParams->getOscUnisonCount(oscIndex) : params->oscUnisonCounts[oscIndex].load();
+                osc.setUnisonCount(unison);
 
-            float panSpread = currentParams ? currentParams->getOscPanSpread(oscIndex) : params->oscPanSpreads[oscIndex].load();
-            osc.setPanSpread(panSpread);
+                float panSpread = currentParams ? currentParams->getOscPanSpread(oscIndex) : params->oscPanSpreads[oscIndex].load();
+                osc.setPanSpread(panSpread);
 
-            float pan = currentParams ? currentParams->getOscPan(oscIndex) : params->oscPans[oscIndex].load();
-            osc.setPan(pan);
+                float pan = currentParams ? currentParams->getOscPan(oscIndex) : params->oscPans[oscIndex].load();
+                osc.setPan(pan);
 
-            float oscLeft = 0.0f, oscRight = 0.0f;
-            osc.process(oscLeft, oscRight);
+                // No FM/AM input for OSC1 (it's the primary modulator)
+                osc.setFMInput(0.0f);
+                osc.setAMInput(1.0f);
+                osc.setFMAmount(0.0f);
+                osc.setAMAmount(0.0f);
 
-            left += oscLeft;
-            right += oscRight;
+                osc.process(osc1Left, osc1Right);
+                osc1Output = oscillators[oscIndex].getLastOutput();
+
+                left += osc1Left;
+                right += osc1Right;
+            }
+        }
+
+        // === OSC 2 (Can be modulated by OSC1) ===
+        {
+            int oscIndex = 1;
+            float level = currentParams ? currentParams->getOscLevel(oscIndex) : params->oscLevels[oscIndex].load();
+
+            if (level >= 0.001f)
+            {
+                auto& osc = oscillators[oscIndex];
+
+                float pitchOffset = currentParams ? currentParams->getOscPitchOffset(oscIndex) : params->oscPitchOffsets[oscIndex].load();
+                osc.setFrequency(calculateFrequency(currentMidiNote, pitchOffset));
+                osc.setLevel(level);
+
+                float morph = currentParams ? currentParams->getOscMorph(oscIndex) : params->oscMorphs[oscIndex].load();
+                osc.setMorphPosition(morph);
+
+                float detune = currentParams ? currentParams->getOscDetune(oscIndex) : params->oscDetunes[oscIndex].load();
+                osc.setDetune(detune);
+
+                int unison = currentParams ? currentParams->getOscUnisonCount(oscIndex) : params->oscUnisonCounts[oscIndex].load();
+                osc.setUnisonCount(unison);
+
+                float panSpread = currentParams ? currentParams->getOscPanSpread(oscIndex) : params->oscPanSpreads[oscIndex].load();
+                osc.setPanSpread(panSpread);
+
+                float pan = currentParams ? currentParams->getOscPan(oscIndex) : params->oscPans[oscIndex].load();
+                osc.setPan(pan);
+
+                // Apply FM/AM from OSC1
+                osc.setFMInput(osc1Output);
+                osc.setAMInput(0.5f + 0.5f * osc1Output);  // Convert bipolar to unipolar for AM
+                osc.setFMAmount(fmAmount12);
+                osc.setAMAmount(amAmount12);
+
+                osc.process(osc2Left, osc2Right);
+                osc2Output = oscillators[oscIndex].getLastOutput();
+
+                left += osc2Left;
+                right += osc2Right;
+            }
+        }
+
+        // === OSC 3 (Can be modulated by OSC1 and OSC2) ===
+        {
+            int oscIndex = 2;
+            float level = currentParams ? currentParams->getOscLevel(oscIndex) : params->oscLevels[oscIndex].load();
+
+            if (level >= 0.001f)
+            {
+                auto& osc = oscillators[oscIndex];
+
+                float pitchOffset = currentParams ? currentParams->getOscPitchOffset(oscIndex) : params->oscPitchOffsets[oscIndex].load();
+                osc.setFrequency(calculateFrequency(currentMidiNote, pitchOffset));
+                osc.setLevel(level);
+
+                float morph = currentParams ? currentParams->getOscMorph(oscIndex) : params->oscMorphs[oscIndex].load();
+                osc.setMorphPosition(morph);
+
+                float detune = currentParams ? currentParams->getOscDetune(oscIndex) : params->oscDetunes[oscIndex].load();
+                osc.setDetune(detune);
+
+                int unison = currentParams ? currentParams->getOscUnisonCount(oscIndex) : params->oscUnisonCounts[oscIndex].load();
+                osc.setUnisonCount(unison);
+
+                float panSpread = currentParams ? currentParams->getOscPanSpread(oscIndex) : params->oscPanSpreads[oscIndex].load();
+                osc.setPanSpread(panSpread);
+
+                float pan = currentParams ? currentParams->getOscPan(oscIndex) : params->oscPans[oscIndex].load();
+                osc.setPan(pan);
+
+                // Combine FM from OSC1 and OSC2 (weighted by amounts)
+                float combinedFM = osc1Output;
+                if (fmAmount23 > 0.001f)
+                {
+                    // If OSC2 -> OSC3 FM is active, mix it with OSC1 -> OSC3
+                    float fm13Weight = fmAmount13 / (fmAmount13 + fmAmount23 + 0.001f);
+                    float fm23Weight = fmAmount23 / (fmAmount13 + fmAmount23 + 0.001f);
+                    combinedFM = osc1Output * fm13Weight + osc2Output * fm23Weight;
+                }
+
+                // Combine AM from OSC1 and OSC2
+                float combinedAM = 0.5f + 0.5f * osc1Output;
+                if (amAmount23 > 0.001f)
+                {
+                    float am13Weight = amAmount13 / (amAmount13 + amAmount23 + 0.001f);
+                    float am23Weight = amAmount23 / (amAmount13 + amAmount23 + 0.001f);
+                    combinedAM = (0.5f + 0.5f * osc1Output) * am13Weight + (0.5f + 0.5f * osc2Output) * am23Weight;
+                }
+
+                // Apply combined FM/AM
+                osc.setFMInput(combinedFM);
+                osc.setAMInput(combinedAM);
+                osc.setFMAmount(fmAmount13 + fmAmount23);  // Total FM depth
+                osc.setAMAmount(amAmount13 + amAmount23);  // Total AM depth
+
+                float osc3Left = 0.0f, osc3Right = 0.0f;
+                osc.process(osc3Left, osc3Right);
+
+                left += osc3Left;
+                right += osc3Right;
+            }
         }
 
         float subLevel = currentParams ? currentParams->getSubLevel() : params->subLevel.load();
@@ -225,6 +358,9 @@ void WavetableVoice::renderNextBlock(juce::AudioBuffer<float>& buffer, int start
         }
 
         filter.process(left, right);
+
+        // Apply waveshaper after filter
+        waveshaper.process(left, right);
 
         float amp = envValue * currentVelocity * masterLevel;
         left *= amp;

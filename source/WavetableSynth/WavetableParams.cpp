@@ -300,6 +300,90 @@ void WavetableParams::setMasterLevel(float value)
 }
 
 // ============================================================
+// Waveshaper Parameters
+// ============================================================
+
+int WavetableParams::getShaperMode() const
+{
+    return shaperMode.load();
+}
+
+float WavetableParams::getShaperAmount() const
+{
+    return shaperAmount.load();
+}
+
+float WavetableParams::getShaperMix() const
+{
+    return shaperMix.load();
+}
+
+void WavetableParams::setShaperMode(int value)
+{
+    shaperMode.store(juce::jlimit(0, static_cast<int>(6), value));  // 0-6 for Mode enum
+    notifyChange();
+}
+
+void WavetableParams::setShaperAmount(float value)
+{
+    shaperAmount.store(juce::jlimit(0.0f, 1.0f, value));
+    notifyChange();
+}
+
+void WavetableParams::setShaperMix(float value)
+{
+    shaperMix.store(juce::jlimit(0.0f, 1.0f, value));
+    notifyChange();
+}
+
+// ============================================================
+// FM/AM Modulation Parameters
+// ============================================================
+
+float WavetableParams::getFMAmount12() const { return fmAmount12.load(); }
+float WavetableParams::getFMAmount13() const { return fmAmount13.load(); }
+float WavetableParams::getFMAmount23() const { return fmAmount23.load(); }
+float WavetableParams::getAMAmount12() const { return amAmount12.load(); }
+float WavetableParams::getAMAmount13() const { return amAmount13.load(); }
+float WavetableParams::getAMAmount23() const { return amAmount23.load(); }
+
+void WavetableParams::setFMAmount12(float value)
+{
+    fmAmount12.store(juce::jlimit(0.0f, 24.0f, value));  // 0-24 semitones
+    notifyChange();
+}
+
+void WavetableParams::setFMAmount13(float value)
+{
+    fmAmount13.store(juce::jlimit(0.0f, 24.0f, value));
+    notifyChange();
+}
+
+void WavetableParams::setFMAmount23(float value)
+{
+    fmAmount23.store(juce::jlimit(0.0f, 24.0f, value));
+    notifyChange();
+}
+
+void WavetableParams::setAMAmount12(float value)
+{
+    amAmount12.store(juce::jlimit(0.0f, 1.0f, value));
+    notifyChange();
+}
+
+void WavetableParams::setAMAmount13(float value)
+{
+    amAmount13.store(juce::jlimit(0.0f, 1.0f, value));
+    notifyChange();
+}
+
+void WavetableParams::setAMAmount23(float value)
+{
+    amAmount23.store(juce::jlimit(0.0f, 1.0f, value));
+    notifyChange();
+}
+
+// ============================================================
 // Wavetable Selection
 // ============================================================
 
@@ -345,6 +429,17 @@ void WavetableParams::copyFrom(const WavetableParams& other)
     envSustain.store(other.envSustain.load());
     envRelease.store(other.envRelease.load());
 
+    shaperMode.store(other.shaperMode.load());
+    shaperAmount.store(other.shaperAmount.load());
+    shaperMix.store(other.shaperMix.load());
+
+    fmAmount12.store(other.fmAmount12.load());
+    fmAmount13.store(other.fmAmount13.load());
+    fmAmount23.store(other.fmAmount23.load());
+    amAmount12.store(other.amAmount12.load());
+    amAmount13.store(other.amAmount13.load());
+    amAmount23.store(other.amAmount23.load());
+
     masterLevel.store(other.masterLevel.load());
     wavetableIndex.store(other.wavetableIndex.load());
 
@@ -378,6 +473,17 @@ void WavetableParams::resetToDefaults()
     envDecay.store(0.1f);
     envSustain.store(0.7f);
     envRelease.store(0.3f);
+
+    shaperMode.store(0);      // Off
+    shaperAmount.store(0.5f);
+    shaperMix.store(1.0f);
+
+    fmAmount12.store(0.0f);
+    fmAmount13.store(0.0f);
+    fmAmount23.store(0.0f);
+    amAmount12.store(0.0f);
+    amAmount13.store(0.0f);
+    amAmount23.store(0.0f);
 
     masterLevel.store(1.0f);
     wavetableIndex.store(0);

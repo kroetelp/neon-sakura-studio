@@ -549,3 +549,131 @@ void WavetableData::generateWavetableFromBaseWave(std::vector<std::vector<float>
         }
     }
 }
+
+// ============================================================
+// Wavetable Editing Methods
+// ============================================================
+
+void WavetableData::setSample(int frameIndex, int sampleIndex, float value)
+{
+    if (frameIndex >= 0 && frameIndex < static_cast<int>(frames.size()) &&
+        sampleIndex >= 0 && sampleIndex < samplesPerFrame)
+    {
+        frames[frameIndex][sampleIndex] = juce::jlimit(-1.0f, 1.0f, value);
+    }
+}
+
+void WavetableData::setFrame(int frameIndex, const std::vector<float>& waveform)
+{
+    if (frameIndex >= 0 && frameIndex < static_cast<int>(frames.size()) &&
+        waveform.size() == static_cast<size_t>(samplesPerFrame))
+    {
+        frames[frameIndex] = waveform;
+    }
+}
+
+void WavetableData::setCurrentEditFrame(const std::vector<float>& waveform)
+{
+    if (!frames.empty() && waveform.size() == static_cast<size_t>(samplesPerFrame))
+    {
+        frames[0] = waveform;  // Edit frame 0 by default
+    }
+}
+
+std::vector<float>& WavetableData::getCurrentEditFrame()
+{
+    static std::vector<float> empty;
+    if (frames.empty())
+        return empty;
+    return frames[0];  // Edit frame 0 by default
+}
+
+const std::vector<float>& WavetableData::getCurrentEditFrame() const
+{
+    static std::vector<float> empty;
+    if (frames.empty())
+        return empty;
+    return frames[0];
+}
+
+void WavetableData::createEmptyWavetable(int numFrames, int samples)
+{
+    frames.clear();
+    frames.resize(numFrames);
+    samplesPerFrame = samples;
+
+    for (auto& frame : frames)
+    {
+        frame.resize(samplesPerFrame, 0.0f);
+    }
+
+    wavetableName = "Custom Drawing";
+}
+
+void WavetableData::generateAllFramesFromDrawing(const std::vector<float>& drawnWaveform)
+{
+    if (drawnWaveform.empty())
+        return;
+
+    // Resample to our frame size if needed
+    std::vector<float> resampled;
+    if (static_cast<int>(drawnWaveform.size()) != samplesPerFrame)
+    {
+        resampled = resampleWaveform(drawnWaveform.data(),
+                                      static_cast<int>(drawnWaveform.size()),
+                                      samplesPerFrame);
+    }
+    else
+    {
+        resampled = drawnWaveform;
+    }
+
+    // Use spectral morphing to generate all frames
+    createFramesWithSpectralMorph(resampled, static_cast<int>(frames.size()));
+
+    wavetableName = "Custom Drawing";
+}
+
+void WavetableData::interpolateDrawnPoints(std::vector<float>& waveform,
+                                             const std::vector<std::pair<int, float>>& points)
+{
+    if (points.empty() || waveform.empty())
+        return;
+
+    // Sort points by index
+    auto sortedPoints = points;
+    std::sort(sortedPoints.begin(), sortedPoints.end(),
+              [](const auto& a, const auto& b) { return a.first < b.first; });
+
+    int size = static_cast<int>(waveform.size());
+
+    // Interpolate between points
+    for (size_t i = 0; i < sortedPoints.size(); ++i)
+    {
+        int idx0 = sortedPoints[i].first;
+        float val0 = sortedPoints[i].second;
+
+        int idx1;
+        float val1;
+
+        if (i + 1 < sortedPoints.size())
+        {
+            idx1 = sortedPoints[i + 1].first;
+            val1 = sortedPoints[i + 1].second;
+        }
+        else
+        {
+            // Wrap around to first point for seamless loop
+            idx1 = sortedPoints[0].first + size;
+            val1 = sortedPoints[0].second;
+        }
+
+        // Linear interpolation between points
+        for (int j = idx0; j < idx1 && j < size; ++j)
+        {
+            float t = static_cast<float>(j - idx0) / (idx1 - idx0);
+            int actualIdx = j % size;
+            waveform[actualIdx] = val0 * (1.0f - t) + val1 * t;
+        }
+    }
+}

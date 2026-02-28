@@ -1,6 +1,8 @@
 #include "WavetableSynthEditor.h"
 #include "OscillatorSection.h"
 #include "FilterSection.h"
+#include "ShaperSection.h"
+#include "ModulationSection.h"
 #include "EnvelopeSection.h"
 #include "WavetableDisplay.h"
 #include "Oscilloscope.h"
@@ -11,7 +13,7 @@
 WavetableSynthEditor::WavetableSynthEditor(WavetableEngine& externalEngine)
     : engine(&externalEngine), isEngineMode(true)
 {
-    setLookAndFeel(&customLookAndFeel); 
+    setLookAndFeel(&customLookAndFeel);
 
     sharedParams = engine->getSynthesiser().getSharedParams();
 
@@ -30,6 +32,12 @@ WavetableSynthEditor::WavetableSynthEditor(WavetableEngine& externalEngine)
 
     filterSection = std::make_unique<FilterSection>();
     addAndMakeVisible(filterSection.get());
+
+    shaperSection = std::make_unique<ShaperSection>();
+    addAndMakeVisible(shaperSection.get());
+
+    modulationSection = std::make_unique<ModulationSection>();
+    addAndMakeVisible(modulationSection.get());
 
     envelopeSection = std::make_unique<EnvelopeSection>();
     addAndMakeVisible(envelopeSection.get());
@@ -74,6 +82,12 @@ WavetableSynthEditor::WavetableSynthEditor(std::shared_ptr<WavetableParams> para
     filterSection = std::make_unique<FilterSection>();
     addAndMakeVisible(filterSection.get());
 
+    shaperSection = std::make_unique<ShaperSection>();
+    addAndMakeVisible(shaperSection.get());
+
+    modulationSection = std::make_unique<ModulationSection>();
+    addAndMakeVisible(modulationSection.get());
+
     envelopeSection = std::make_unique<EnvelopeSection>();
     addAndMakeVisible(envelopeSection.get());
 
@@ -84,7 +98,7 @@ WavetableSynthEditor::WavetableSynthEditor(std::shared_ptr<WavetableParams> para
     addAndMakeVisible(modulationGrid.get());
 
     setupMasterControls();
-    
+
     setupKeyboard();
     keyboard->setEnabled(false);
 
@@ -237,6 +251,7 @@ void WavetableSynthEditor::resized()
     auto bounds = getLocalBounds().reduced(10);
     bounds.removeFromTop(25);
 
+    // Wavetable display area (now includes editing buttons)
     wavetableDisplay->setBounds(bounds.removeFromTop(100));
 
     auto oscRow = bounds.removeFromTop(150);
@@ -245,8 +260,12 @@ void WavetableSynthEditor::resized()
     osc2Section->setBounds(oscRow.removeFromLeft(oscWidth).reduced(2));
     osc3Section->setBounds(oscRow.reduced(2));
 
+    // Filter, Shaper, Modulation, Envelope row - 4 columns
     auto filterEnvRow = bounds.removeFromTop(120);
-    filterSection->setBounds(filterEnvRow.removeFromLeft(filterEnvRow.getWidth() / 2).reduced(2));
+    int colWidth = filterEnvRow.getWidth() / 4;
+    filterSection->setBounds(filterEnvRow.removeFromLeft(colWidth).reduced(2));
+    shaperSection->setBounds(filterEnvRow.removeFromLeft(colWidth).reduced(2));
+    modulationSection->setBounds(filterEnvRow.removeFromLeft(colWidth).reduced(2));
     envelopeSection->setBounds(filterEnvRow.reduced(2));
 
     auto modOscRow = bounds.removeFromTop(150);
@@ -572,12 +591,14 @@ void WavetableSynthEditor::connectUIToSharedParams()
     osc3Section->connectToSharedParams(sharedParams, 2);
 
     filterSection->connectToSharedParams(sharedParams);
+    shaperSection->connectToSharedParams(sharedParams);
+    modulationSection->connectToSharedParams(sharedParams);
     envelopeSection->connectToSharedParams(sharedParams);
 
     if (wavetableDisplay)
     {
         wavetableDisplay->connectToSharedParams(sharedParams);
-        
+
         if (loadedWavetable)
         {
             wavetableDisplay->setWavetable(loadedWavetable);
@@ -611,6 +632,21 @@ void WavetableSynthEditor::updateUIFromParams()
         sharedParams->getFilterResonance(),
         sharedParams->getFilterDrive(),
         sharedParams->getFilterMode()
+    );
+
+    shaperSection->updateFromParams(
+        sharedParams->getShaperMode(),
+        sharedParams->getShaperAmount(),
+        sharedParams->getShaperMix()
+    );
+
+    modulationSection->updateFromParams(
+        sharedParams->getFMAmount12(),
+        sharedParams->getFMAmount13(),
+        sharedParams->getFMAmount23(),
+        sharedParams->getAMAmount12(),
+        sharedParams->getAMAmount13(),
+        sharedParams->getAMAmount23()
     );
 
     envelopeSection->updateFromParams(

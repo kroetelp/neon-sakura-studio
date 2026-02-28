@@ -206,6 +206,22 @@ MelodyPanel::MelodyPanel()
     setupSlider(stepCountSlider, 4, 64, 16);
     stepCountSlider.setColour(juce::Slider::thumbColourId, getNeonOrange());
 
+    // Target track selection
+    addAndMakeVisible(targetTrackLabel);
+    targetTrackLabel.setText("Target:", juce::dontSendNotification);
+    targetTrackLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+
+    addAndMakeVisible(targetTrackCombo);
+    for (int i = 0; i < 8; ++i)
+        targetTrackCombo.addItem("Track " + juce::String(i + 1), i + 1);
+    targetTrackCombo.setSelectedId(1);
+    targetTrackCombo.setColour(juce::ComboBox::backgroundColourId, getDarkBackground());
+    targetTrackCombo.setColour(juce::ComboBox::textColourId, getNeonPink());
+    targetTrackCombo.setColour(juce::ComboBox::outlineColourId, getNeonPink());
+    targetTrackCombo.onChange = [this] {
+        targetTrack = targetTrackCombo.getSelectedId() - 1;
+    };
+
     // Action buttons
     setupButton(generateMelodyBtn, "Generate Melody", getNeonPink());
     generateMelodyBtn.onClick = [this] { generateMelody(); };
@@ -271,17 +287,20 @@ void MelodyPanel::resized()
     row3.removeFromLeft(10);
     syncopateToggle.setBounds(row3.removeFromLeft(90));
     row3.removeFromLeft(10);
-    stepCountLabel.setBounds(row3.removeFromLeft(40));
-    stepCountSlider.setBounds(row3.removeFromLeft(100));
+    targetTrackLabel.setBounds(row3.removeFromLeft(45));
+    targetTrackCombo.setBounds(row3.removeFromLeft(90));
 
-    // Row 4: Chord type, Arp direction
+    // Row 4: Chord type, Arp direction, Steps
     auto row4 = area.removeFromTop(35);
     chordTypeCombo.setBounds(row4.removeFromLeft(100));
     row4.removeFromLeft(10);
     arpUpToggle.setBounds(row4.removeFromLeft(50));
     arpDownToggle.setBounds(row4.removeFromLeft(50));
     row4.removeFromLeft(10);
-    progressionCombo.setBounds(row4.removeFromLeft(180));
+    stepCountLabel.setBounds(row4.removeFromLeft(40));
+    stepCountSlider.setBounds(row4.removeFromLeft(100));
+    row4.removeFromLeft(10);
+    progressionCombo.setBounds(row4.removeFromLeft(140));
 
     // Piano roll preview
     pianoRoll->setBounds(area.removeFromTop(80));

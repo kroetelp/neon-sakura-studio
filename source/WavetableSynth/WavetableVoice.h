@@ -8,6 +8,7 @@
 #include "WavetableOscillator.h"
 #include "SubOscillator.h"
 #include "WavetableFilter.h"
+#include "Waveshaper.h"
 #include "WavetableParams.h"
 #include "../Modulation/ModulationSource.h"
 #include "../Modulation/ModulationMatrix.h"
@@ -75,6 +76,7 @@ private:
     std::array<WavetableOscillator, 3> oscillators;
     SubOscillator subOscillator;
     WavetableFilter filter;
+    Waveshaper waveshaper;
 
     struct ADSR
     {

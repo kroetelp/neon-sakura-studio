@@ -44,6 +44,9 @@ public:
     // Generate a song pattern for the specified genre
     void generateSong(Genre genre);
 
+    // Generate pattern for a specific track only (or all tracks if targetTrack == -1)
+    void generateSongForTrack(Genre genre, int targetTrack);
+
     // Clear a single track (steps and P-Locks)
     void clearTrackFully(int trackIdx);
 

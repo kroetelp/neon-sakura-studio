@@ -103,11 +103,27 @@ void WavetableOscillator::process(float& leftOut, float& rightOut)
 {
     leftOut = 0.0f;
     rightOut = 0.0f;
+    lastOutput = 0.0f;
 
     if (!wavetable || frequency <= 0.0f)
         return;
 
+    // Apply FM modulation to frequency
+    // fmInput is -1 to 1, fmAmount is semitones
+    // Convert semitones to frequency multiplier: 2^(semitones/12)
+    float fmMod = fmInput * fmAmount;
+    float fmMultiplier = std::pow(2.0f, fmMod / 12.0f);
+    float modulatedFreq = frequency * fmMultiplier;
+
+    // Apply AM modulation to level
+    // amInput modulates the level, amAmount controls depth
+    float amMod = 1.0f - amAmount + (amInput * amAmount);
+    float modulatedLevel = level * juce::jlimit(0.0f, 2.0f, amMod);
+
     float unisonGain = 1.0f / std::sqrt(static_cast<float>(unisonCount));
+
+    // Calculate modulated phase increment
+    float modulatedPhaseIncrement = modulatedFreq / static_cast<float>(sampleRate);
 
     for (int i = 0; i < unisonCount; ++i)
     {
@@ -116,16 +132,22 @@ void WavetableOscillator::process(float& leftOut, float& rightOut)
         // Get sample from wavetable
         float sample = getSampleFromWavetable(voice.phase);
 
-        // Apply gain and panning
-        sample *= level * unisonGain;
+        // Apply modulated gain and panning
+        sample *= modulatedLevel * unisonGain;
         leftOut += sample * voice.panLeft;
         rightOut += sample * voice.panRight;
+        lastOutput += sample;  // Sum for mono output
 
-        // Advance phase
-        voice.phase += voice.phaseIncrement;
+        // Advance phase with FM-modulated increment
+        voice.phase += modulatedPhaseIncrement * voice.detuneRatio;
 
         // Wrap phase
         while (voice.phase >= 1.0f)
             voice.phase -= 1.0f;
+        while (voice.phase < 0.0f)
+            voice.phase += 1.0f;
     }
+
+    // Normalize mono output
+    lastOutput /= static_cast<float>(unisonCount);
 }

@@ -14,6 +14,7 @@
  * - Unison mode with multiple detuned voices
  * - Pan spread for stereo width
  * - Linear interpolation between wavetable frames
+ * - FM and AM modulation inputs
  */
 class WavetableOscillator
 {
@@ -37,6 +38,12 @@ public:
     void setDetune(float cents) { detuneCents = cents; updatePhaseIncrements(); }
     void setPanSpread(float spread) { panSpread = spread; updatePanPositions(); }
 
+    // FM/AM Modulation inputs (applied during process())
+    void setFMInput(float fmSignal) { fmInput = fmSignal; }
+    void setAMInput(float amSignal) { amInput = amSignal; }
+    void setFMAmount(float amt) { fmAmount = amt; }
+    void setAMAmount(float amt) { amAmount = amt; }
+
     // Phase reset for new note
     void resetPhase();
 
@@ -48,6 +55,9 @@ public:
 
     // Get current frequency
     float getFrequency() const { return frequency; }
+
+    // Get last mono output (for modulation routing)
+    float getLastOutput() const { return lastOutput; }
 
 private:
     std::shared_ptr<WavetableData> wavetable;
@@ -63,6 +73,13 @@ private:
     int unisonCount = 1;
     float detuneCents = 0.0f;    // Detune in cents
     float panSpread = 0.0f;       // Stereo spread
+
+    // FM/AM modulation
+    float fmInput = 0.0f;        // External FM signal (-1 to 1)
+    float amInput = 1.0f;        // External AM signal (0 to 1 typically)
+    float fmAmount = 0.0f;       // FM depth in semitones
+    float amAmount = 0.0f;       // AM depth (0-1)
+    float lastOutput = 0.0f;     // Last mono output for modulation
 
     // Per-unison-voice state
     struct UnisonVoice

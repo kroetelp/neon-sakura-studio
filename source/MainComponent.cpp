@@ -150,6 +150,19 @@ void MainComponent::initializeUI()
     genreComboBox.setColour(juce::ComboBox::arrowColourId, getNeonPink());
     addAndMakeVisible(genreComboBox);
 
+    drumTargetLabel.setText("Track:", juce::dontSendNotification);
+    drumTargetLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    addAndMakeVisible(drumTargetLabel);
+
+    drumTargetTrackCombo.addItem("All Tracks", 0);
+    for (int i = 0; i < numTracks; ++i)
+        drumTargetTrackCombo.addItem("Track " + juce::String(i + 1), i + 1);
+    drumTargetTrackCombo.setSelectedId(0);
+    drumTargetTrackCombo.setColour(juce::ComboBox::backgroundColourId, getDarkBackground());
+    drumTargetTrackCombo.setColour(juce::ComboBox::textColourId, juce::Colours::white);
+    drumTargetTrackCombo.setColour(juce::ComboBox::outlineColourId, getNeonCyan());
+    addAndMakeVisible(drumTargetTrackCombo);
+
     generateButton.setButtonText("Generate");
     generateButton.setColour(juce::TextButton::buttonColourId, getNeonPink());
     generateButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
@@ -316,7 +329,12 @@ void MainComponent::connectUICallbacks()
     generateButton.onClick = [this] {
         if (audioEngine->isPlaying())
             togglePlay();
-        patternGenerator->generateSong(static_cast<PatternGenerator::Genre>(genreComboBox.getSelectedId()));
+
+        int targetTrack = drumTargetTrackCombo.getSelectedId() - 1; // -1 means all tracks (ID 0 = "All Tracks")
+        if (targetTrack == -1)
+            patternGenerator->generateSong(static_cast<PatternGenerator::Genre>(genreComboBox.getSelectedId()));
+        else
+            patternGenerator->generateSongForTrack(static_cast<PatternGenerator::Genre>(genreComboBox.getSelectedId()), targetTrack);
     };
 
     swingSlider.onValueChange = [this] {
@@ -452,10 +470,14 @@ void MainComponent::resized()
     xPos += 35;
     loopLengthComboBox.setBounds(xPos, bottomY + 2, 100, sliderHeight);
     xPos += 110;
-    genreComboBox.setBounds(xPos, bottomY + 2, 120, sliderHeight);
-    xPos += 130;
-    generateButton.setBounds(xPos, bottomY, 130, btnHeight);
-    xPos += 140;
+    genreComboBox.setBounds(xPos, bottomY + 2, 90, sliderHeight);
+    xPos += 95;
+    drumTargetLabel.setBounds(xPos, bottomY + 5, 40, 20);
+    xPos += 42;
+    drumTargetTrackCombo.setBounds(xPos, bottomY + 2, 100, sliderHeight);
+    xPos += 105;
+    generateButton.setBounds(xPos, bottomY, 100, btnHeight);
+    xPos += 110;
     swingLabel.setBounds(xPos, bottomY + 5, 40, 20);
     xPos += 40;
     swingSlider.setBounds(xPos, bottomY + 2, 120, sliderHeight);

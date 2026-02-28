@@ -52,6 +52,33 @@ public:
     // Get the current morphed waveform for display
     void getCurrentWaveform(float morphPosition, std::vector<float>& outWaveform) const;
 
+    // ============================================================
+    // Wavetable Editing (for drawing)
+    // ============================================================
+
+    // Set a single sample in a specific frame
+    void setSample(int frameIndex, int sampleIndex, float value);
+
+    // Set an entire frame from a waveform buffer
+    void setFrame(int frameIndex, const std::vector<float>& waveform);
+
+    // Set the currently edited frame (for real-time drawing)
+    void setCurrentEditFrame(const std::vector<float>& waveform);
+
+    // Get the currently edited frame
+    std::vector<float>& getCurrentEditFrame();
+    const std::vector<float>& getCurrentEditFrame() const;
+
+    // Create a new empty wavetable for editing
+    void createEmptyWavetable(int numFrames = 256, int samplesPerFrame = 2048);
+
+    // Generate all frames from a drawn waveform using spectral morphing
+    void generateAllFramesFromDrawing(const std::vector<float>& drawnWaveform);
+
+    // Interpolate drawn points to fill the entire frame
+    static void interpolateDrawnPoints(std::vector<float>& waveform,
+                                        const std::vector<std::pair<int, float>>& points);
+
     // Wavetable name for display
     void setName(const juce::String& name) { wavetableName = name; }
     juce::String getName() const { return wavetableName; }

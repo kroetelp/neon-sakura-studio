@@ -117,6 +117,39 @@ public:
     void setEnvRelease(float value);
 
     // ============================================================
+    // Waveshaper Parameters
+    // ============================================================
+
+    int getShaperMode() const;
+    float getShaperAmount() const;
+    float getShaperMix() const;
+
+    void setShaperMode(int value);
+    void setShaperAmount(float value);
+    void setShaperMix(float value);
+
+    // ============================================================
+    // FM/AM Modulation Parameters
+    // ============================================================
+
+    // FM: OSC1 -> OSC2, OSC1 -> OSC3, OSC2 -> OSC3
+    float getFMAmount12() const;  // OSC1 -> OSC2
+    float getFMAmount13() const;  // OSC1 -> OSC3
+    float getFMAmount23() const;  // OSC2 -> OSC3
+
+    // AM: OSC1 -> OSC2, OSC1 -> OSC3, OSC2 -> OSC3
+    float getAMAmount12() const;  // OSC1 -> OSC2
+    float getAMAmount13() const;  // OSC1 -> OSC3
+    float getAMAmount23() const;  // OSC2 -> OSC3
+
+    void setFMAmount12(float value);
+    void setFMAmount13(float value);
+    void setFMAmount23(float value);
+    void setAMAmount12(float value);
+    void setAMAmount13(float value);
+    void setAMAmount23(float value);
+
+    // ============================================================
     // Master Parameters
     // ============================================================
 
@@ -168,6 +201,19 @@ private:
     std::atomic<float> envDecay;
     std::atomic<float> envSustain;
     std::atomic<float> envRelease;
+
+    // Waveshaper
+    std::atomic<int> shaperMode;
+    std::atomic<float> shaperAmount;
+    std::atomic<float> shaperMix;
+
+    // FM/AM Modulation
+    std::atomic<float> fmAmount12;  // OSC1 -> OSC2
+    std::atomic<float> fmAmount13;  // OSC1 -> OSC3
+    std::atomic<float> fmAmount23;  // OSC2 -> OSC3
+    std::atomic<float> amAmount12;  // OSC1 -> OSC2
+    std::atomic<float> amAmount13;  // OSC1 -> OSC3
+    std::atomic<float> amAmount23;  // OSC2 -> OSC3
 
     // Master
     std::atomic<float> masterLevel;

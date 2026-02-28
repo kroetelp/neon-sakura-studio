@@ -134,6 +134,290 @@ void PatternGenerator::generateSong(Genre genre)
     }
 }
 
+void PatternGenerator::generateSongForTrack(Genre genre, int targetTrack)
+{
+    // If targetTrack is -1 or invalid, generate for all tracks
+    if (targetTrack < 0 || targetTrack >= numTracks)
+    {
+        generateSong(genre);
+        return;
+    }
+
+    // Clear only the target track
+    clearTrackFully(targetTrack);
+
+    // Random generator with TIME-based seed for unique patterns every time!
+    unsigned seed = static_cast<unsigned>(std::chrono::system_clock::now().time_since_epoch().count());
+    std::mt19937 rng(seed);
+
+    // Generate pattern for specific track based on genre
+    std::uniform_int_distribution<int> boolDist(0, 1);
+    std::uniform_int_distribution<int> smallDist(0, 2);
+    std::uniform_int_distribution<int> mediumDist(0, 3);
+    std::uniform_int_distribution<int> pitchDist(-12, 5);
+    std::uniform_int_distribution<int> offsetDist(0, 15);
+
+    switch (genre)
+    {
+        case Genre::TECHNO:
+            {
+                int bpmVal = 128 + mediumDist(rng) * 4;
+                setBPM(bpmVal);
+
+                switch (targetTrack)
+                {
+                    case 0: // Kick
+                        setTrackCategoryIfAvailable(0, "bd");
+                        setStepsOnTrack(0, {0, 4, 8, 12});
+                        break;
+                    case 1: // Clap
+                        setTrackCategoryIfAvailable(1, "cp");
+                        setStepsOnTrack(1, getEuclidean(1 + boolDist(rng), 16, offsetDist(rng)));
+                        break;
+                    case 2: // Hi-Hats
+                        setTrackCategoryIfAvailable(2, "hh");
+                        {
+                            auto hatSteps = getEuclidean(7 + mediumDist(rng), 16, 0);
+                            setStepsOnTrack(2, hatSteps);
+                            for (int step : hatSteps)
+                                if (boolDist(rng) == 0)
+                                    trackManager.getTrack(2).setStepModifier(step, '?', 50 + smallDist(rng) * 25);
+                        }
+                        break;
+                    case 3: // Bass
+                        setTrackCategoryIfAvailable(3, "bass");
+                        {
+                            auto bassSteps = getEuclidean(3 + mediumDist(rng), 16, 0);
+                            setStepsOnTrack(3, bassSteps);
+                            for (int step : bassSteps)
+                            {
+                                if (boolDist(rng) == 0)
+                                {
+                                    StepModifierState state = trackManager.getTrack(3).getStepState(step);
+                                    state.hasPitchLock = true;
+                                    state.pitchLock = pitchDist(rng);
+                                    trackManager.getTrack(3).setStepState(step, state);
+                                }
+                            }
+                        }
+                        break;
+                    case 4: // Percussion
+                        setTrackCategoryIfAvailable(4, "perc");
+                        setStepsOnTrack(4, getEuclidean(2 + smallDist(rng), 11 + smallDist(rng) * 2, 0));
+                        break;
+                    default:
+                        setTrackCategoryIfAvailable(targetTrack, "perc");
+                        setStepsOnTrack(targetTrack, getEuclidean(2 + smallDist(rng), 16, offsetDist(rng)));
+                        break;
+                }
+            }
+            break;
+
+        case Genre::HOUSE:
+            {
+                int bpmVal = 120 + smallDist(rng) * 10;
+                setBPM(bpmVal);
+
+                switch (targetTrack)
+                {
+                    case 0: // Kick - 4-on-the-floor
+                        setTrackCategoryIfAvailable(0, "bd");
+                        setStepsOnTrack(0, {0, 4, 8, 12});
+                        break;
+                    case 1: // Clap
+                        setTrackCategoryIfAvailable(1, "cp");
+                        setStepsOnTrack(1, {4, 12});
+                        break;
+                    case 2: // Hi-Hats - Offbeats
+                        setTrackCategoryIfAvailable(2, "hh");
+                        setStepsOnTrack(2, {2, 6, 10, 14});
+                        break;
+                    case 3: // Bass
+                        setTrackCategoryIfAvailable(3, "bass");
+                        setStepsOnTrack(3, {0, 2, 4, 6, 8, 10, 12, 14});
+                        break;
+                    case 4: // Percussion/Tom
+                        setTrackCategoryIfAvailable(4, "lt");
+                        setStepsOnTrack(4, getEuclidean(1 + boolDist(rng), 16, offsetDist(rng)));
+                        break;
+                    default:
+                        setTrackCategoryIfAvailable(targetTrack, "perc");
+                        setStepsOnTrack(targetTrack, getEuclidean(2 + smallDist(rng), 16, offsetDist(rng)));
+                        break;
+                }
+            }
+            break;
+
+        case Genre::TRAP:
+            {
+                int bpmVal = 140 + smallDist(rng) * 10;
+                setBPM(bpmVal);
+
+                switch (targetTrack)
+                {
+                    case 0: // Kick
+                        setTrackCategoryIfAvailable(0, "bd");
+                        {
+                            std::vector<int> kickPattern = {0};
+                            if (boolDist(rng)) kickPattern.push_back(8);
+                            if (boolDist(rng)) kickPattern.push_back(10 + smallDist(rng));
+                            setStepsOnTrack(0, kickPattern);
+                        }
+                        break;
+                    case 1: // Snare
+                        setTrackCategoryIfAvailable(1, "sn");
+                        setStepsOnTrack(1, {4, 12});
+                        break;
+                    case 2: // Hi-Hats - Dense
+                        setTrackCategoryIfAvailable(2, "hh");
+                        setStepsOnTrack(2, getEuclidean(12 + boolDist(rng) * 2, 16, 0));
+                        trackManager.getTrack(2).setStepModifier(6 + mediumDist(rng) * 2, '*', 3 + boolDist(rng));
+                        break;
+                    case 3: // 808 Bass
+                        setTrackCategoryIfAvailable(3, "bass");
+                        setStepsOnTrack(3, {0, 8});
+                        break;
+                    case 4: // Percussion
+                        setTrackCategoryIfAvailable(4, "perc");
+                        setStepsOnTrack(4, getEuclidean(2 + smallDist(rng), 16, 2));
+                        break;
+                    default:
+                        setTrackCategoryIfAvailable(targetTrack, "perc");
+                        setStepsOnTrack(targetTrack, getEuclidean(2 + smallDist(rng), 16, offsetDist(rng)));
+                        break;
+                }
+            }
+            break;
+
+        case Genre::DNB:
+            {
+                int bpmVal = 170 + smallDist(rng) * 10;
+                setBPM(bpmVal);
+
+                switch (targetTrack)
+                {
+                    case 0: // Kick - Breakbeat
+                        setTrackCategoryIfAvailable(0, "bd");
+                        setStepsOnTrack(0, {0, 5, 8, 13});
+                        break;
+                    case 1: // Snare
+                        setTrackCategoryIfAvailable(1, "sn");
+                        setStepsOnTrack(1, {4, 12});
+                        break;
+                    case 2: // Hi-Hats - Dense with ratchets
+                        setTrackCategoryIfAvailable(2, "hh");
+                        for (int step = 0; step < 16; ++step)
+                        {
+                            if (boolDist(rng) || step % 2 == 0)
+                            {
+                                trackManager.getTrack(2).setStepActive(step, true);
+                                if (boolDist(rng) == 0)
+                                    trackManager.getTrack(2).setStepModifier(step, '*', 2 + smallDist(rng));
+                            }
+                        }
+                        break;
+                    case 3: // Reese Bass
+                        setTrackCategoryIfAvailable(3, "bass");
+                        {
+                            auto bassSteps = getEuclidean(2 + mediumDist(rng), 16, 0);
+                            setStepsOnTrack(3, bassSteps);
+                            for (int step : bassSteps)
+                            {
+                                StepModifierState state = trackManager.getTrack(3).getStepState(step);
+                                state.hasPitchLock = true;
+                                state.pitchLock = -12 + pitchDist(rng);
+                                trackManager.getTrack(3).setStepState(step, state);
+                            }
+                        }
+                        break;
+                    case 4: // Percussion
+                        setTrackCategoryIfAvailable(4, "perc");
+                        setStepsOnTrack(4, getEuclidean(3 + mediumDist(rng), 16, 1));
+                        break;
+                    default:
+                        setTrackCategoryIfAvailable(targetTrack, "perc");
+                        setStepsOnTrack(targetTrack, getEuclidean(2 + smallDist(rng), 16, offsetDist(rng)));
+                        break;
+                }
+            }
+            break;
+
+        case Genre::AMBIENT:
+            {
+                int bpmVal = 60 + smallDist(rng) * 15;
+                setBPM(bpmVal);
+
+                setTrackCategoryIfAvailable(targetTrack, targetTrack == 3 ? "bass" : (targetTrack == 2 ? "st" : "perc"));
+                int loopLen = 16 + mediumDist(rng) * 8;
+                setStepsOnTrack(targetTrack, getEuclidean(1 + boolDist(rng), loopLen, 0));
+
+                if (targetTrack < 6)
+                {
+                    for (int step = 0; step < 16; ++step)
+                    {
+                        if (trackManager.getTrack(targetTrack).isStepActive(step))
+                        {
+                            trackManager.getTrack(targetTrack).setStepModifier(step, '?', 30 + mediumDist(rng) * 20);
+                            if (boolDist(rng))
+                                trackManager.getTrack(targetTrack).setStepModifier(step, '@', 2 + smallDist(rng));
+                        }
+                    }
+                }
+            }
+            break;
+
+        case Genre::GARAGE:
+            {
+                int bpmVal = 135 + mediumDist(rng) * 5;
+                setBPM(bpmVal);
+
+                switch (targetTrack)
+                {
+                    case 0: // Kick - Sparse
+                        setTrackCategoryIfAvailable(0, "bd");
+                        setStepsOnTrack(0, getEuclidean(2 + smallDist(rng), 16, offsetDist(rng)));
+                        break;
+                    case 1: // Snare
+                        setTrackCategoryIfAvailable(1, "sn");
+                        setStepsOnTrack(1, getEuclidean(1 + boolDist(rng), 16, 4));
+                        break;
+                    case 2: // Hi-Hats - Chaos
+                        setTrackCategoryIfAvailable(2, "hh");
+                        for (int step = 0; step < 16; ++step)
+                        {
+                            trackManager.getTrack(2).setStepActive(step, true);
+                            if (boolDist(rng) == 0)
+                                trackManager.getTrack(2).setStepModifier(step, '*', 2 + smallDist(rng));
+                        }
+                        break;
+                    case 3: // Bass
+                        setTrackCategoryIfAvailable(3, "bass");
+                        setStepsOnTrack(3, getEuclidean(4 + mediumDist(rng), 16, offsetDist(rng)));
+                        break;
+                    case 5: // Glitch/Noise
+                        setTrackCategoryIfAvailable(5, "noise");
+                        {
+                            auto glitchSteps = getEuclidean(2 + mediumDist(rng), 11, 0);
+                            setStepsOnTrack(5, glitchSteps);
+                            for (int step : glitchSteps)
+                            {
+                                StepModifierState state = trackManager.getTrack(5).getStepState(step);
+                                state.hasVolLock = true;
+                                state.volLock = 0.3f + static_cast<float>(smallDist(rng)) * 0.14f;
+                                trackManager.getTrack(5).setStepState(step, state);
+                            }
+                        }
+                        break;
+                    default:
+                        setTrackCategoryIfAvailable(targetTrack, "perc");
+                        setStepsOnTrack(targetTrack, getEuclidean(2 + smallDist(rng), 16, offsetDist(rng)));
+                        break;
+                }
+            }
+            break;
+    }
+}
+
 void PatternGenerator::generateTechno(std::mt19937& rng)
 {
     std::uniform_int_distribution<int> boolDist(0, 1);

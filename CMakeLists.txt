@@ -98,6 +98,8 @@ target_sources(NeonSakuraStudio
     source/WavetableSynth/SubOscillator.cpp
     source/WavetableSynth/WavetableFilter.h
     source/WavetableSynth/WavetableFilter.cpp
+    source/WavetableSynth/Waveshaper.h
+    source/WavetableSynth/Waveshaper.cpp
     source/WavetableSynth/WavetableVoice.h
     source/WavetableSynth/WavetableVoice.cpp
     source/WavetableSynth/WavetableSynth.h
@@ -130,6 +132,10 @@ target_sources(NeonSakuraStudio
     source/WavetableUI/OscillatorSection.cpp
     source/WavetableUI/FilterSection.h
     source/WavetableUI/FilterSection.cpp
+    source/WavetableUI/ShaperSection.h
+    source/WavetableUI/ShaperSection.cpp
+    source/WavetableUI/ModulationSection.h
+    source/WavetableUI/ModulationSection.cpp
     source/WavetableUI/EnvelopeSection.h
     source/WavetableUI/EnvelopeSection.cpp
     source/WavetableUI/WavetableDisplay.h

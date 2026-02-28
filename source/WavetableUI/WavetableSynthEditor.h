@@ -12,6 +12,8 @@
 class OscillatorSection;
 class FilterSection;
 class EnvelopeSection;
+class ShaperSection;
+class ModulationSection;
 class WavetableDisplay;
 class Oscilloscope;
 class ModulationGrid;
@@ -62,6 +64,8 @@ private:
     std::unique_ptr<OscillatorSection> osc2Section;
     std::unique_ptr<OscillatorSection> osc3Section;
     std::unique_ptr<FilterSection> filterSection;
+    std::unique_ptr<ShaperSection> shaperSection;
+    std::unique_ptr<ModulationSection> modulationSection;
     std::unique_ptr<EnvelopeSection> envelopeSection;
     std::unique_ptr<Oscilloscope> oscilloscope;
     std::unique_ptr<ModulationGrid> modulationGrid;
