@@ -4,18 +4,34 @@
 #include "TrackModel.h"
 #include "Modulation/ModulationSource.h"
 #include "WavetableSynth/WavetableSynth.h"
+#include "Timeline/TimelineData.h"
+#include "Timeline/TimelineTransport.h"
+#include "Timeline/TimelineRenderer.h"
+#include "Timeline/RecordingManager.h"
 
 AudioEngine::AudioEngine(ITrackDataProvider* provider)
     : trackProvider(provider)
     , playbackController(nullptr)
 {
+    // Initialize Timeline components
+    timelineData = std::make_unique<TimelineData>();
+    timelineTransport = std::make_unique<TimelineTransport>(*timelineData);
+    timelineRenderer = std::make_unique<TimelineRenderer>(*timelineData, *timelineTransport);
+    recordingManager = std::make_unique<RecordingManager>(*timelineData);
 }
 
 AudioEngine::AudioEngine(ITrackDataProvider* provider, PlaybackController* controller)
     : trackProvider(provider)
     , playbackController(controller)
 {
+    // Initialize Timeline components
+    timelineData = std::make_unique<TimelineData>();
+    timelineTransport = std::make_unique<TimelineTransport>(*timelineData);
+    timelineRenderer = std::make_unique<TimelineRenderer>(*timelineData, *timelineTransport);
+    recordingManager = std::make_unique<RecordingManager>(*timelineData);
 }
+
+AudioEngine::~AudioEngine() = default;
 
 void AudioEngine::prepareToPlay(int samplesPerBlockExpected, double newSampleRate)
 {
@@ -67,11 +83,34 @@ void AudioEngine::prepareToPlay(int samplesPerBlockExpected, double newSampleRat
     {
         calculateSamplesPerStep();
     }
+
+    // Prepare Timeline renderer
+    timelineRenderer->prepareToPlay(newSampleRate, safeBufferSize);
+    timelineRenderer->setWavetableEngine(&wavetableEngine);
 }
 
 void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill)
 {
     bufferToFill.clearActiveBufferRegion();
+
+    // Check engine mode and route accordingly
+    if (engineMode.load() == EngineMode::Timeline)
+    {
+        // Timeline/DAW mode
+        timelineRenderer->processBlock(*bufferToFill.buffer, wavetableMidiBuffer);
+
+        // Handle recording if active
+        if (recordingManager->isRecording())
+        {
+            // Note: For recording, we'd need input buffer from AudioDeviceManager
+            // This is a simplified version - full implementation would capture input
+        }
+
+        applyMasterReverb(*bufferToFill.buffer);
+        return;
+    }
+
+    // Step Sequencer mode (original logic)
 
     const int localSamplesPerStep = samplesPerStep.load();
     const bool localIsPlaying = playing.load();
@@ -482,4 +521,42 @@ void AudioEngine::applyMasterReverb(juce::AudioBuffer<float>& buffer)
         float* right = buffer.getWritePointer(1, 0);
         masterReverb.processStereo(left, right, buffer.getNumSamples());
     }
+}
+
+// === Timeline Mode ===
+
+void AudioEngine::setEngineMode(EngineMode mode)
+{
+    engineMode.store(mode);
+
+    if (mode == EngineMode::Timeline)
+    {
+        // Sync BPM to timeline
+        timelineData->setBPM(bpm.load());
+    }
+}
+
+TimelineData& AudioEngine::getTimelineData()
+{
+    return *timelineData;
+}
+
+const TimelineData& AudioEngine::getTimelineData() const
+{
+    return *timelineData;
+}
+
+TimelineTransport& AudioEngine::getTimelineTransport()
+{
+    return *timelineTransport;
+}
+
+TimelineRenderer& AudioEngine::getTimelineRenderer()
+{
+    return *timelineRenderer;
+}
+
+RecordingManager& AudioEngine::getRecordingManager()
+{
+    return *recordingManager;
 }

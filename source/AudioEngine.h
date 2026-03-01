@@ -26,11 +26,18 @@
 #include "WavetableSynth/WavetableEngine.h"
 
 class PlaybackController;
+class TimelineData;
+class TimelineTransport;
+class TimelineRenderer;
+class RecordingManager;
 
 class AudioEngine
 {
 public:
     static constexpr int numTracks = 8;
+
+    // Engine Mode - Step Sequencer or Timeline/DAW
+    enum class EngineMode { StepSequencer, Timeline };
 
     /**
      * Constructor with ITrackDataProvider interface
@@ -43,6 +50,9 @@ public:
      * If PlaybackController is provided, AudioEngine syncs with it for timing state
      */
     AudioEngine(ITrackDataProvider* trackProvider, PlaybackController* playbackController);
+
+    /** Destructor - needed for unique_ptr with incomplete types */
+    ~AudioEngine();
 
     // AudioAppComponent Delegation Methods
     void prepareToPlay(int samplesPerBlockExpected, double sampleRate);
@@ -76,6 +86,16 @@ public:
     // Wavetable Synth access
     WavetableEngine& getWavetableEngine() { return wavetableEngine; }
     const WavetableEngine& getWavetableEngine() const { return wavetableEngine; }
+
+    // === Timeline Mode ===
+    EngineMode getEngineMode() const { return engineMode.load(); }
+    void setEngineMode(EngineMode mode);
+
+    TimelineData& getTimelineData();
+    const TimelineData& getTimelineData() const;
+    TimelineTransport& getTimelineTransport();
+    TimelineRenderer& getTimelineRenderer();
+    RecordingManager& getRecordingManager();
 
 private:
     // Dependencies (injected)
@@ -141,6 +161,13 @@ private:
     WavetableEngine wavetableEngine;
     std::unique_ptr<juce::AudioBuffer<float>> wavetableBuffer;
     juce::MidiBuffer wavetableMidiBuffer;
+
+    // Timeline Mode
+    std::atomic<EngineMode> engineMode{EngineMode::StepSequencer};
+    std::unique_ptr<TimelineData> timelineData;
+    std::unique_ptr<TimelineTransport> timelineTransport;
+    std::unique_ptr<TimelineRenderer> timelineRenderer;
+    std::unique_ptr<RecordingManager> recordingManager;
 
     // Helper Methods
     void calculateSamplesPerStep();

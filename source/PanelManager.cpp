@@ -2,6 +2,7 @@
 #include "RhythmExplorer.h"
 #include "MelodyPanel.h"
 #include "WavetableUI/WavetableSynthEditor.h"
+#include "Timeline/TimelineComponent.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 class ClosableDocumentWindow : public juce::DocumentWindow
@@ -32,6 +33,11 @@ PanelManager::PanelManager()
 PanelManager::~PanelManager()
 {
     // Clean up windows first
+    if (timelineWindow)
+    {
+        timelineWindow->setVisible(false);
+        timelineWindow.reset();
+    }
     if (trackWavetableWindow)
     {
         trackWavetableWindow->setVisible(false);
@@ -153,6 +159,33 @@ void PanelManager::closeTrackWavetableEditor()
         trackWavetableWindow->setVisible(false);
     }
     currentEditingTrack = -1;
+}
+
+// Timeline Editor
+void PanelManager::setTimelineVisible(bool visible, TimelineData* timelineData, RecordingManager* recordingManager)
+{
+    timelineVisible = visible;
+
+    if (visible && timelineData && recordingManager)
+    {
+        if (!timelineComponent)
+        {
+            timelineComponent = std::make_unique<TimelineComponent>(*timelineData, *recordingManager);
+        }
+
+        if (!timelineWindow)
+        {
+            timelineWindow = createDocumentWindow("Timeline Editor", 1400, 600);
+            timelineWindow->setContentNonOwned(timelineComponent.get(), true);
+        }
+
+        timelineWindow->setVisible(true);
+        timelineWindow->toFront(true);
+    }
+    else if (timelineWindow)
+    {
+        timelineWindow->setVisible(false);
+    }
 }
 
 // Helper to create document window

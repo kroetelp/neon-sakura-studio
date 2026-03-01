@@ -8,6 +8,7 @@
  * - MelodyPanel management
  * - WavetableSynth standalone window management
  * - Per-track Wavetable Editor window management
+ * - Timeline Editor window management
  */
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -19,6 +20,9 @@ class WavetableSynthEditor;
 class WavetableEngine;
 class WavetableParams;
 class WavetableData;
+class TimelineComponent;
+class TimelineData;
+class RecordingManager;
 
 class PanelManager
 {
@@ -50,11 +54,17 @@ public:
     bool isTrackWavetableEditorOpen() const { return trackWavetableWindow != nullptr && trackWavetableWindow->isVisible(); }
     int getCurrentEditingTrack() const { return currentEditingTrack; }
 
+    // Timeline Editor (floating window)
+    void setTimelineVisible(bool visible, TimelineData* timelineData = nullptr, RecordingManager* recordingManager = nullptr);
+    bool isTimelineVisible() const { return timelineVisible; }
+    TimelineComponent* getTimelineComponent() { return timelineComponent.get(); }
+
     // Component getters (for MainComponent layout)
     RhythmExplorer* getRhythmExplorerComponent() { return rhythmExplorer.get(); }
     MelodyPanel* getMelodyPanelComponent() { return melodyPanel.get(); }
     juce::DocumentWindow* getWavetableSynthWindow() { return wavetableSynthWindow.get(); }
     juce::DocumentWindow* getTrackWavetableWindow() { return trackWavetableWindow.get(); }
+    juce::DocumentWindow* getTimelineWindow() { return timelineWindow.get(); }
 
     // Window background color helper
     static juce::Colour getDarkBackground();
@@ -76,6 +86,11 @@ private:
     std::unique_ptr<WavetableSynthEditor> trackWavetableEditor;
     std::unique_ptr<juce::DocumentWindow> trackWavetableWindow;
     int currentEditingTrack = -1;
+
+    // Timeline Editor
+    std::unique_ptr<TimelineComponent> timelineComponent;
+    std::unique_ptr<juce::DocumentWindow> timelineWindow;
+    bool timelineVisible = false;
 
     // Helper to create document window
     std::unique_ptr<juce::DocumentWindow> createDocumentWindow(const juce::String& title, int width, int height);

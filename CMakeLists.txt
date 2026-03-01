@@ -144,6 +144,21 @@ target_sources(NeonSakuraStudio
     source/WavetableUI/Oscilloscope.cpp
     source/WavetableUI/ModulationGrid.h
     source/WavetableUI/ModulationGrid.cpp
+
+    # Timeline
+    source/Timeline/TimelineClip.h
+    source/Timeline/TimelineClip.cpp
+    source/Timeline/TimelineTrack.h
+    source/Timeline/TimelineData.h
+    source/Timeline/TimelineData.cpp
+    source/Timeline/RecordingManager.h
+    source/Timeline/RecordingManager.cpp
+    source/Timeline/TimelineComponent.h
+    source/Timeline/TimelineComponent.cpp
+    source/Timeline/TimelineTransport.h
+    source/Timeline/TimelineTransport.cpp
+    source/Timeline/TimelineRenderer.h
+    source/Timeline/TimelineRenderer.cpp
 )
 
 # Link JUCE modules and melatonin_blur

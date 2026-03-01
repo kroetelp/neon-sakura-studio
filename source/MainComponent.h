@@ -25,6 +25,7 @@ class PatternGenerator;
 class RhythmExplorer;
 class MelodyPanel;
 class WavetableParams;
+class TimelineComponent;
 
 class MainComponent : public juce::AudioAppComponent,
                       public juce::Timer
@@ -72,6 +73,7 @@ private:
     juce::TextButton rhythmExplorerButton;
     juce::TextButton melodyWorkstationButton;
     juce::TextButton wavetableSynthButton;
+    juce::TextButton timelineButton;        // Open Timeline window
 
     juce::Slider bpmSlider;
     juce::Label bpmLabel;

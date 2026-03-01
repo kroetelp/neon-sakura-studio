@@ -9,6 +9,7 @@
 #include "MelodyPanel.h"
 #include "TrackComponent.h"
 #include "WavetableSynth/WavetableData.h"
+#include "Timeline/TimelineComponent.h"
 
 MainComponent::MainComponent()
 {
@@ -211,6 +212,13 @@ void MainComponent::initializeUI()
     wavetableSynthButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     wavetableSynthButton.setClickingTogglesState(true);
     addAndMakeVisible(wavetableSynthButton);
+
+    // Timeline button - opens timeline in separate window
+    timelineButton.setButtonText("Timeline");
+    timelineButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0, 100, 80));
+    timelineButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    timelineButton.setClickingTogglesState(true);
+    addAndMakeVisible(timelineButton);
 }
 
 void MainComponent::connectTrackCallbacks()
@@ -371,6 +379,22 @@ void MainComponent::connectUICallbacks()
         bool visible = wavetableSynthButton.getToggleState();
         panelManager->setWavetableSynthVisible(visible, &audioEngine->getWavetableEngine());
     };
+
+    // Timeline button - opens timeline in separate window
+    timelineButton.onClick = [this] {
+        bool visible = timelineButton.getToggleState();
+
+        panelManager->setTimelineVisible(visible,
+            &audioEngine->getTimelineData(),
+            &audioEngine->getRecordingManager());
+
+        // Connect SampleManager to Timeline after it's created
+        auto* timelineComponent = panelManager->getTimelineComponent();
+        if (timelineComponent)
+        {
+            timelineComponent->setSampleManager(sampleManager.get());
+        }
+    };
 }
 
 void MainComponent::prepareToPlay(int samplesPerBlockExpected, double sampleRate)
@@ -497,6 +521,10 @@ void MainComponent::resized()
     xPos += 95;
     if (xPos + 110 < area.getWidth())
         wavetableSynthButton.setBounds(xPos, bottomY, 110, btnHeight);
+
+    xPos += 115;
+    if (xPos + 80 < area.getWidth())
+        timelineButton.setBounds(xPos, bottomY, 80, btnHeight);
 
     const int trackGap = 5;
     const int expandedHeight = 165;
