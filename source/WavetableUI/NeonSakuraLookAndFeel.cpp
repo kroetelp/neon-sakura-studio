@@ -18,52 +18,129 @@ void NeonSakuraLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, in
                                              float sliderPos, const float rotaryStartAngle,
                                              const float rotaryEndAngle, juce::Slider& slider)
 {
-    auto radius = (float)juce::jmin(width / 2, height / 2) - 4.0f;
+    // === Berechnungen ===
+    const float boundsScale = 0.9f;
+    auto diameter = (float)juce::jmin(width, height) * boundsScale;
+    auto radius = diameter * 0.5f;
     auto centreX = (float)x + (float)width  * 0.5f;
     auto centreY = (float)y + (float)height * 0.5f;
     auto angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
 
-    // Hintergrund-Spur (dunkel)
-    juce::Path backgroundArc;
-    backgroundArc.addCentredArc(centreX, centreY, radius, radius, 0.0f, rotaryStartAngle, rotaryEndAngle, true);
-    g.setColour(juce::Colours::darkgrey.withAlpha(0.3f));
-    g.strokePath(backgroundArc, juce::PathStrokeType(4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    // Hover-State erkennen
+    const bool isHover = slider.isMouseOver() && slider.isEnabled();
+    const bool isDragging = slider.isMouseButtonDown();
 
     // Farbe aus dem Slider auslesen (z.B. NeonPink, NeonCyan)
-    auto fillColour = slider.findColour(juce::Slider::thumbColourId, true);
-    if (fillColour.isTransparent()) fillColour = getNeonCyan(); // Fallback
+    auto accentColour = slider.findColour(juce::Slider::thumbColourId, true);
+    if (accentColour.isTransparent())
+        accentColour = getNeonCyan();
 
-    if (slider.isEnabled())
+    // === 1. Äußerer Glow-Ring (nur bei Hover/Drag) ===
+    if (isHover || isDragging)
     {
-        // Neon Bloom Glow-Effekt (mehrere Layer für echten Glow)
-        juce::Path glowArc;
-        glowArc.addCentredArc(centreX, centreY, radius, radius, 0.0f, rotaryStartAngle, angle, true);
+        float glowIntensity = isDragging ? 0.5f : 0.3f;
+        float glowRadius = radius + 8.0f;
 
-        for (float thickness = 14.0f; thickness > 2.0f; thickness -= 3.0f)
+        juce::Path outerGlow;
+        outerGlow.addCentredArc(centreX, centreY, glowRadius, glowRadius,
+                                0.0f, rotaryStartAngle, rotaryEndAngle, true);
+
+        // Mehrstufiger Glow für weichen Übergang
+        for (float t = 20.0f; t > 2.0f; t -= 4.0f)
         {
-            g.setColour(fillColour.withAlpha(0.1f));
-            g.strokePath(glowArc, juce::PathStrokeType(thickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            g.setColour(accentColour.withAlpha(glowIntensity * (1.0f - t / 20.0f)));
+            g.strokePath(outerGlow, juce::PathStrokeType(t,
+                juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         }
-
-        // Heller, solider Kern
-        juce::Path valueArc;
-        valueArc.addCentredArc(centreX, centreY, radius, radius, 0.0f, rotaryStartAngle, angle, true);
-        g.setColour(fillColour.brighter(0.2f));
-        g.strokePath(valueArc, juce::PathStrokeType(2.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
-    // Leuchtender Punkt als Zeiger mit Glow
-    auto pointerRadius = radius - 7.0f;
-    auto pointerX = centreX + pointerRadius * std::cos(angle - juce::MathConstants<float>::halfPi);
-    auto pointerY = centreY + pointerRadius * std::sin(angle - juce::MathConstants<float>::halfPi);
+    // === 2. Dunkler Körper (Flat Design) ===
+    float bodyRadius = radius * 0.85f;
+    juce::Path knobBody;
+    knobBody.addEllipse(centreX - bodyRadius, centreY - bodyRadius,
+                        bodyRadius * 2.0f, bodyRadius * 2.0f);
+
+    // Sanfter Farbverlauf für Tiefe
+    juce::ColourGradient bodyGradient(
+        getDarkBackground().brighter(isHover ? 0.08f : 0.03f),
+        centreX - bodyRadius * 0.3f, centreY - bodyRadius * 0.3f,
+        getDarkBackground().darker(0.1f),
+        centreX + bodyRadius * 0.5f, centreY + bodyRadius * 0.5f,
+        true
+    );
+    g.setGradientFill(bodyGradient);
+    g.fillPath(knobBody);
+
+    // Subtiler Rand
+    g.setColour(juce::Colours::white.withAlpha(isHover ? 0.15f : 0.05f));
+    g.strokePath(knobBody, juce::PathStrokeType(1.0f));
+
+    // === 3. Hintergrund-Arc (inaktive Spur) ===
+    float arcRadius = radius * 0.92f;
+    float arcThickness = 3.5f;
+
+    juce::Path backgroundArc;
+    backgroundArc.addCentredArc(centreX, centreY, arcRadius, arcRadius,
+                                0.0f, rotaryStartAngle, rotaryEndAngle, true);
+    g.setColour(juce::Colours::darkgrey.withAlpha(0.25f));
+    g.strokePath(backgroundArc, juce::PathStrokeType(arcThickness,
+        juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    // === 4. Wert-Bogen (Neon-Leuchtspur) ===
+    if (slider.isEnabled())
+    {
+        juce::Path valueArc;
+        valueArc.addCentredArc(centreX, centreY, arcRadius, arcRadius,
+                               0.0f, rotaryStartAngle, angle, true);
+
+        // Neon-Glow unter dem Wert-Bogen
+        float glowAlpha = isDragging ? 0.5f : (isHover ? 0.35f : 0.25f);
+        for (float t = 14.0f; t > arcThickness; t -= 2.5f)
+        {
+            g.setColour(accentColour.withAlpha(glowAlpha * (1.0f - t / 14.0f)));
+            g.strokePath(valueArc, juce::PathStrokeType(t,
+                juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+
+        // Solider Kern des Wert-Bogens mit Farbverlauf
+        juce::ColourGradient arcGradient(
+            accentColour.brighter(isDragging ? 0.6f : 0.3f),
+            centreX - arcRadius, centreY,
+            accentColour.darker(0.1f),
+            centreX + arcRadius, centreY,
+            false
+        );
+        g.setGradientFill(arcGradient);
+        g.strokePath(valueArc, juce::PathStrokeType(arcThickness,
+            juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+
+    // === 5. Zeiger-Punkt auf dem Bogen ===
+    float pointerRadius = arcRadius;
+    float pointerX = centreX + pointerRadius * std::cos(angle - juce::MathConstants<float>::halfPi);
+    float pointerY = centreY + pointerRadius * std::sin(angle - juce::MathConstants<float>::halfPi);
 
     // Glow unter dem Punkt
-    g.setColour(fillColour.withAlpha(0.5f));
-    g.fillEllipse(pointerX - 6.0f, pointerY - 6.0f, 12.0f, 12.0f);
+    float pointerGlowSize = isDragging ? 14.0f : (isHover ? 12.0f : 10.0f);
+    g.setColour(accentColour.withAlpha(isDragging ? 0.7f : 0.5f));
+    g.fillEllipse(pointerX - pointerGlowSize * 0.5f, pointerY - pointerGlowSize * 0.5f,
+                  pointerGlowSize, pointerGlowSize);
 
     // Weißer Kern
-    g.setColour(juce::Colours::white);
-    g.fillEllipse(pointerX - 3.0f, pointerY - 3.0f, 6.0f, 6.0f);
+    float pointerCoreSize = isDragging ? 7.0f : (isHover ? 6.0f : 5.0f);
+    g.setColour(juce::Colours::white.withAlpha(isDragging ? 1.0f : 0.95f));
+    g.fillEllipse(pointerX - pointerCoreSize * 0.5f, pointerY - pointerCoreSize * 0.5f,
+                  pointerCoreSize, pointerCoreSize);
+
+    // === 6. Zentrale Wert-Anzeige (optional, für große Knobs) ===
+    if (diameter > 60.0f && slider.isEnabled())
+    {
+        // Kleiner innerer Punkt für visuellen Fokus
+        float innerDotSize = 4.0f;
+        g.setColour(accentColour.withAlpha(isHover ? 0.4f : 0.2f));
+        g.fillEllipse(centreX - innerDotSize * 0.5f, centreY - innerDotSize * 0.5f,
+                      innerDotSize, innerDotSize);
+    }
 }
 
 void NeonSakuraLookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int width, int height,

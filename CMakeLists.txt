@@ -67,6 +67,10 @@ target_sources(NeonSakuraStudio
     source/PlaybackController.cpp
     source/PanelManager.h
     source/PanelManager.cpp
+    source/DockablePanel.h
+    source/DockablePanel.cpp
+    source/DockingManager.h
+    source/DockingManager.cpp
 
     # Core Components
     source/TrackModel.h
@@ -128,6 +132,8 @@ target_sources(NeonSakuraStudio
     source/WavetableUI/NeonSakuraLookAndFeel.cpp
     source/WavetableUI/WavetableSynthEditor.h
     source/WavetableUI/WavetableSynthEditor.cpp
+    source/WavetableUI/WavetablePanel.h
+    source/WavetableUI/WavetablePanel.cpp
     source/WavetableUI/OscillatorSection.h
     source/WavetableUI/OscillatorSection.cpp
     source/WavetableUI/FilterSection.h
@@ -159,6 +165,14 @@ target_sources(NeonSakuraStudio
     source/Timeline/TimelineTransport.cpp
     source/Timeline/TimelineRenderer.h
     source/Timeline/TimelineRenderer.cpp
+    source/Timeline/TimelinePanel.h
+    source/Timeline/TimelinePanel.cpp
+
+    # Step Sequencer
+    source/StepSequencer/NeonStepButton.h
+    source/StepSequencer/NeonStepButton.cpp
+    source/StepSequencer/StepSequencerPanel.h
+    source/StepSequencer/StepSequencerPanel.cpp
 )
 
 # Link JUCE modules and melatonin_blur

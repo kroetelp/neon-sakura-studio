@@ -3,12 +3,17 @@
 #include "SampleManager.h"
 #include "PlaybackController.h"
 #include "PanelManager.h"
+#include "DockingManager.h"
+#include "Timeline/TimelinePanel.h"
+#include "WavetableUI/WavetablePanel.h"
+#include "StepSequencer/StepSequencerPanel.h"
 #include "AudioEngine.h"
 #include "PatternGenerator.h"
 #include "RhythmExplorer.h"
 #include "MelodyPanel.h"
 #include "TrackComponent.h"
 #include "WavetableSynth/WavetableData.h"
+#include "WavetableSynth/WavetableEngine.h"
 #include "Timeline/TimelineComponent.h"
 
 MainComponent::MainComponent()
@@ -18,6 +23,7 @@ MainComponent::MainComponent()
     formatManager.registerBasicFormats();
     initializeManagers();
     initializeUI();
+    initializeDockingPanels();  // NEU: Panels registrieren und layouten
     connectTrackCallbacks();
     connectPanelCallbacks();
     connectUICallbacks();
@@ -31,7 +37,7 @@ MainComponent::MainComponent()
 
     setAudioChannels(2, 2);
     startTimerHz(15);
-    setSize(2400, 1300);
+    setSize(1600, 900);  // Kompakter für Single-Window
 }
 
 MainComponent::~MainComponent()
@@ -53,6 +59,10 @@ void MainComponent::initializeManagers()
 
     panelManager = std::make_unique<PanelManager>();
 
+    // === DockingManager für Single-Window Workspace ===
+    dockingManager = std::make_unique<DockingManager>();
+    dockingManager->setMainComponent(this);
+
     patternGenerator = std::make_unique<PatternGenerator>(
         *trackManager,
         *sampleManager,
@@ -62,10 +72,95 @@ void MainComponent::initializeManagers()
         }
     );
 
-    // --- NEU: Initialisiere den Wooting Manager für analoge Eingaben ---
     wootingManager = std::make_unique<WootingManager>();
-    // Verbinde die Lock-Free Queue mit der WavetableEngine
     audioEngine->getWavetableEngine().setMidiEventQueue(&wootingManager->getMidiQueue());
+}
+
+void MainComponent::initializeDockingPanels()
+{
+    // === WavetablePanel erstellen und registrieren ===
+    auto wavetablePanel = std::make_unique<WavetablePanel>();
+    wavetablePanel->setEngine(&audioEngine->getWavetableEngine());
+    dockingManager->registerPanel(std::move(wavetablePanel));
+
+    // === TimelinePanel erstellen und registrieren ===
+    auto timelinePanel = std::make_unique<TimelinePanel>();
+    timelinePanel->setDependencies(&audioEngine->getTimelineData(),
+                                    &audioEngine->getRecordingManager());
+    timelinePanel->setSampleManager(sampleManager.get());
+    dockingManager->registerPanel(std::move(timelinePanel));
+
+    // === StepSequencerPanel erstellen und registrieren ===
+    auto stepSequencerPanel = std::make_unique<StepSequencerPanel>();
+    stepSequencerPanel->setTrackManager(trackManager.get());
+    dockingManager->registerPanel(std::move(stepSequencerPanel));
+
+    // === Stretchable Resizer Bar erstellen ===
+    verticalResizerBar = std::make_unique<juce::StretchableLayoutResizerBar>(
+        &stretchableManager, resizerLayoutId, false);  // false = vertical
+    addAndMakeVisible(verticalResizerBar.get());
+
+    // === Stretchable Layout konfigurieren ===
+    // Layout-Items: Synth (oben), Resizer, Tabs (unten)
+    stretchableManager.setItemLayout(synthLayoutId,
+                                      minPanelHeight,
+                                      -1,
+                                      defaultSynthHeight);
+
+    stretchableManager.setItemLayout(resizerLayoutId,
+                                      resizerBarHeight,
+                                      resizerBarHeight,
+                                      resizerBarHeight);
+
+    stretchableManager.setItemLayout(bottomTabsLayoutId,
+                                      minPanelHeight,
+                                      -1,
+                                      defaultBottomTabsHeight);
+
+    // === Tab-Component für unteren Bereich initialisieren ===
+    initializeBottomTabs();
+
+    // === Panels SICHTBAR machen (als Docked) ===
+    dockingManager->dockPanel(PanelType::WavetableSynth, DockPosition::Center);
+    // Timeline und StepSequencer werden über Tabs verwaltet, nicht einzeln sichtbar
+}
+
+void MainComponent::initializeBottomTabs()
+{
+    // Tab-Component erstellen mit Neon Sakura Styling
+    bottomTabs = std::make_unique<juce::TabbedComponent>(juce::TabbedButtonBar::TabsAtTop);
+
+    // Tab-Bar Styling
+    bottomTabs->setTabBarDepth(tabBarHeight);
+    bottomTabs->setColour(juce::TabbedComponent::backgroundColourId, getDarkBackground());
+    bottomTabs->setColour(juce::TabbedComponent::outlineColourId, juce::Colour(40, 40, 60));
+
+    // Tab-Buttons Styling
+    auto& tabBar = bottomTabs->getTabbedButtonBar();
+    tabBar.setColour(juce::TabbedButtonBar::tabOutlineColourId, juce::Colour(40, 40, 60));
+    tabBar.setColour(juce::TabbedButtonBar::frontOutlineColourId, getNeonCyan());
+
+    // Timeline Tab hinzufügen
+    auto* timelinePanel = dockingManager->getPanelAs<TimelinePanel>(PanelType::Timeline);
+    if (timelinePanel)
+    {
+        // ACHTUNG: Wir fügen das Panel NICHT als Ownership hinzu,
+        // sondern zeigen nur seinen Content an.
+        // Das Panel bleibt im Besitz des DockingManagers.
+        bottomTabs->addTab("Timeline", getNeonCyan(), timelinePanel, false);
+    }
+
+    // Step Sequencer Tab hinzufügen
+    auto* stepSequencerPanel = dockingManager->getPanelAs<StepSequencerPanel>(PanelType::StepSequencer);
+    if (stepSequencerPanel)
+    {
+        bottomTabs->addTab("Step Sequencer", getNeonPink(), stepSequencerPanel, false);
+    }
+
+    // Standardmäßig Timeline Tab anzeigen
+    bottomTabs->setCurrentTabIndex(timelineTabIndex);
+
+    addAndMakeVisible(bottomTabs.get());
 }
 
 void MainComponent::initializeUI()
@@ -208,16 +303,18 @@ void MainComponent::initializeUI()
     addAndMakeVisible(melodyWorkstationButton);
 
     wavetableSynthButton.setButtonText("Wavetable Synth");
-    wavetableSynthButton.setColour(juce::TextButton::buttonColourId, getNeonPurple().withAlpha(0.7f));
+    wavetableSynthButton.setColour(juce::TextButton::buttonColourId, getNeonPurple());
     wavetableSynthButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     wavetableSynthButton.setClickingTogglesState(true);
+    wavetableSynthButton.setToggleState(true, juce::dontSendNotification);  // Standardmäßig AN
     addAndMakeVisible(wavetableSynthButton);
 
-    // Timeline button - opens timeline in separate window
+    // Timeline button - Teil des Single-Window Workspaces
     timelineButton.setButtonText("Timeline");
     timelineButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0, 100, 80));
     timelineButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     timelineButton.setClickingTogglesState(true);
+    timelineButton.setToggleState(true, juce::dontSendNotification);  // Standardmäßig AN
     addAndMakeVisible(timelineButton);
 }
 
@@ -375,25 +472,16 @@ void MainComponent::connectUICallbacks()
         resized();
     };
 
+    // Wavetable button - verwendet NEUES Docking-System
     wavetableSynthButton.onClick = [this] {
         bool visible = wavetableSynthButton.getToggleState();
-        panelManager->setWavetableSynthVisible(visible, &audioEngine->getWavetableEngine());
+        dockingManager->setPanelVisible(PanelType::WavetableSynth, visible);
     };
 
-    // Timeline button - opens timeline in separate window
+    // Timeline button - verwendet NEUES Docking-System
     timelineButton.onClick = [this] {
         bool visible = timelineButton.getToggleState();
-
-        panelManager->setTimelineVisible(visible,
-            &audioEngine->getTimelineData(),
-            &audioEngine->getRecordingManager());
-
-        // Connect SampleManager to Timeline after it's created
-        auto* timelineComponent = panelManager->getTimelineComponent();
-        if (timelineComponent)
-        {
-            timelineComponent->setSampleManager(sampleManager.get());
-        }
+        dockingManager->setPanelVisible(PanelType::Timeline, visible);
     };
 }
 
@@ -430,43 +518,105 @@ void MainComponent::resized()
         return;
     }
 
-    auto area = bounds.reduced(10);
+    // === 1. TOP BAR (Transport Controls) ===
+    auto topBarArea = bounds.removeFromTop(topBarHeight);
+    layoutTopBar(topBarArea);
 
-    const int rhythmExplorerWidth = 280;
-    const int melodyPanelWidth = 350;
+    // === 2. SIDEBAR (RhythmExplorer/MelodyPanel) ===
+    bool hasOldSidebar = panelManager->isRhythmExplorerVisible() || panelManager->isMelodyPanelVisible();
     juce::Rectangle<int> rhythmExplorerArea;
     juce::Rectangle<int> melodyPanelArea;
 
-    if (panelManager->isRhythmExplorerVisible() && panelManager->isMelodyPanelVisible())
+    if (hasOldSidebar)
     {
-        int totalWidth = rhythmExplorerWidth + melodyPanelWidth + 20;
-        auto rightArea = area.removeFromRight(totalWidth);
-        melodyPanelArea = rightArea.removeFromRight(melodyPanelWidth);
-        rightArea.removeFromRight(10);
-        rhythmExplorerArea = rightArea;
-    }
-    else if (panelManager->isRhythmExplorerVisible())
-    {
-        rhythmExplorerArea = area.removeFromRight(rhythmExplorerWidth);
-        area.removeFromRight(10);
-    }
-    else if (panelManager->isMelodyPanelVisible())
-    {
-        melodyPanelArea = area.removeFromRight(melodyPanelWidth);
-        area.removeFromRight(10);
+        const int rhythmExplorerWidth = 280;
+        const int melodyPanelWidth = 350;
+
+        if (panelManager->isRhythmExplorerVisible() && panelManager->isMelodyPanelVisible())
+        {
+            int totalWidth = rhythmExplorerWidth + melodyPanelWidth + 20;
+            auto rightArea = bounds.removeFromRight(totalWidth);
+            melodyPanelArea = rightArea.removeFromRight(melodyPanelWidth);
+            rightArea.removeFromRight(10);
+            rhythmExplorerArea = rightArea;
+        }
+        else if (panelManager->isRhythmExplorerVisible())
+        {
+            rhythmExplorerArea = bounds.removeFromRight(rhythmExplorerWidth);
+            bounds.removeFromRight(10);
+        }
+        else if (panelManager->isMelodyPanelVisible())
+        {
+            melodyPanelArea = bounds.removeFromRight(melodyPanelWidth);
+            bounds.removeFromRight(10);
+        }
     }
 
-    const int controlHeight = 90;
-    auto controlArea = area.removeFromTop(controlHeight);
+    // === 3. HAUPTBEREICH: Tracks (Links) + Wavetable/Timeline (Rechts) ===
+    auto mainArea = bounds.reduced(5, 5);
 
-    auto topRow = controlArea.removeFromTop(45);
-    auto bottomRow = controlArea;
+    // Breite für Tracks (ca. 60% des Bereichs)
+    const int trackAreaWidth = juce::jmax(500, mainArea.getWidth() * 6 / 10);
+    auto trackArea = mainArea.removeFromLeft(trackAreaWidth);
+    mainArea.removeFromLeft(5);  // Gap
+
+    // === 3a. TRACKS layouten (Der eigentliche Step Sequencer) ===
+    layoutTracks(trackArea);
+
+    // === 3b. WAVETABLE + TIMELINE (Rechts mit StretchableLayout) ===
+    auto* synthPanel = dockingManager->getPanel(PanelType::WavetableSynth);
+
+    if (synthPanel && bottomTabs && verticalResizerBar)
+    {
+        juce::Component* comps[] = { synthPanel, verticalResizerBar.get(), bottomTabs.get() };
+        int ids[] = { synthLayoutId, resizerLayoutId, bottomTabsLayoutId };
+        int numComps = 3;
+
+        stretchableManager.layOutComponents(comps, numComps,
+                                             mainArea.getX(),
+                                             mainArea.getY(),
+                                             mainArea.getWidth(),
+                                             mainArea.getHeight(),
+                                             true, true);
+    }
+
+    // === 4. SIDEBAR PANELS layouten ===
+    if (panelManager->isRhythmExplorerVisible() && rhythmExplorerArea.getWidth() > 0)
+    {
+        panelManager->getRhythmExplorerComponent()->setBounds(rhythmExplorerArea.reduced(5));
+    }
+
+    if (panelManager->isMelodyPanelVisible() && melodyPanelArea.getWidth() > 0)
+    {
+        panelManager->getMelodyPanelComponent()->setBounds(melodyPanelArea.reduced(5));
+    }
+
+    isResizing = false;
+}
+
+void MainComponent::layoutTracks(juce::Rectangle<int> area)
+{
+    // Tracks vertikal anordnen
+    const int trackHeight = area.getHeight() / numTracks;
+
+    trackManager->forEachTrack([&, this](int i, TrackComponent& track)
+    {
+        int y = area.getY() + i * trackHeight;
+        track.setBounds(area.getX(), y, area.getWidth(), trackHeight);
+    });
+}
+
+void MainComponent::layoutTopBar(juce::Rectangle<int>& area)
+{
+    auto topRow = area.removeFromTop(45);
+    auto bottomRow = area;
 
     const int rowY = 5;
     const int btnHeight = 35;
     const int sliderHeight = 30;
     int xPos = 10;
 
+    // Top Row - Haupt-Controls
     playButton.setBounds(xPos, rowY, 70, btnHeight);
     xPos += 75;
     stopButton.setBounds(xPos, rowY, 70, btnHeight);
@@ -487,6 +637,7 @@ void MainComponent::resized()
     xPos += 130;
     audioSettingsButton.setBounds(xPos, rowY, 60, btnHeight);
 
+    // Bottom Row - Generator Controls
     xPos = 10;
     const int bottomY = 50;
 
@@ -510,6 +661,7 @@ void MainComponent::resized()
     xPos += 45;
     reverbSlider.setBounds(xPos, bottomY + 2, 120, sliderHeight);
 
+    // Sidebar Toggle Buttons
     xPos += 130;
     if (xPos + 120 < area.getWidth())
         rhythmExplorerButton.setBounds(xPos, bottomY, 120, btnHeight);
@@ -525,28 +677,6 @@ void MainComponent::resized()
     xPos += 115;
     if (xPos + 80 < area.getWidth())
         timelineButton.setBounds(xPos, bottomY, 80, btnHeight);
-
-    const int trackGap = 5;
-    const int expandedHeight = 165;
-    const int collapsedHeight = 45;
-
-    trackManager->forEachTrack([&](int i, TrackComponent& track) {
-        const int trackHeight = track.getIsExpanded() ? expandedHeight : collapsedHeight;
-        track.setBounds(area.removeFromTop(trackHeight));
-        area.removeFromTop(trackGap);
-    });
-
-    if (panelManager->isRhythmExplorerVisible() && rhythmExplorerArea.getWidth() > 0)
-    {
-        panelManager->getRhythmExplorerComponent()->setBounds(rhythmExplorerArea.reduced(5));
-    }
-
-    if (panelManager->isMelodyPanelVisible() && melodyPanelArea.getWidth() > 0)
-    {
-        panelManager->getMelodyPanelComponent()->setBounds(melodyPanelArea.reduced(5));
-    }
-
-    isResizing = false;
 }
 
 void MainComponent::timerCallback()
