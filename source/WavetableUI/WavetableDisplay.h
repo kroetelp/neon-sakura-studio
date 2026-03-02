@@ -4,6 +4,7 @@
 #include "../WavetableSynth/WavetableVoice.h"
 #include "../WavetableSynth/WavetableData.h"
 #include "../WavetableSynth/WavetableParams.h"
+#include "melatonin_blur.h"
 #include <memory>
 
 /**
@@ -61,6 +62,9 @@ private:
     std::vector<float> drawnWaveform;
     bool isDrawing = false;
     int lastDrawnIndex = -1;
+
+    // Cached shadow objects (avoid recreation every paint call)
+    melatonin::DropShadow glowShadow { juce::Colour(0, 255, 255), 6, {0, 0} };
 
     // UI Elements
     juce::TextButton editButton;

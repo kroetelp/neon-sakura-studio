@@ -3,6 +3,54 @@
 ModulationGrid::ModulationGrid()
 {
     buildGrid();
+    // Start with live feedback enabled
+    setLiveFeedbackEnabled(true);
+}
+
+ModulationGrid::~ModulationGrid()
+{
+    stopTimer();
+}
+
+void ModulationGrid::setLiveFeedbackEnabled(bool enabled)
+{
+    liveFeedbackEnabled = enabled;
+    if (enabled)
+        startTimerHz(30);  // 30 Hz update rate for smooth animation
+    else
+        stopTimer();
+}
+
+void ModulationGrid::timerCallback()
+{
+    updateLiveValues();
+    repaint();
+}
+
+void ModulationGrid::updateLiveValues()
+{
+    if (!modMatrix)
+        return;
+
+    // Update animation phase for pulsing effect
+    animationPhase += 0.05f;
+    if (animationPhase > 1.0f)
+        animationPhase -= 1.0f;
+
+    // Get live modulation values from matrix for each cell
+    for (auto& cell : cells)
+    {
+        if (cell.active)
+        {
+            // Get the current modulation value for this target
+            // This shows the actual modulated value in real-time
+            cell.currentValue = modMatrix->getModulationValue(cell.target);
+        }
+        else
+        {
+            cell.currentValue = 0.0f;
+        }
+    }
 }
 
 void ModulationGrid::connectToMatrix(ModulationMatrix* matrix)
@@ -118,6 +166,30 @@ juce::Colour ModulationGrid::getCellColour(float amount) const
         return getNeonPink().withAlpha(-amount);
 }
 
+juce::Colour ModulationGrid::getLiveFeedbackColour(float currentValue, float amount) const
+{
+    if (std::abs(amount) < 0.01f || std::abs(currentValue) < 0.001f)
+        return juce::Colours::darkgrey.withAlpha(0.3f);
+
+    // Calculate pulsing intensity based on animation phase
+    float pulseIntensity = 0.5f + 0.5f * std::sin(animationPhase * juce::MathConstants<float>::twoPi);
+
+    // Base alpha from the modulation amount
+    float baseAlpha = std::abs(amount);
+
+    // Modulate alpha by the current value intensity
+    float valueIntensity = std::abs(currentValue);
+
+    // Combine: amount sets the color, currentValue creates the pulse
+    float finalAlpha = baseAlpha * (0.6f + 0.4f * valueIntensity * pulseIntensity);
+    finalAlpha = juce::jlimit(0.1f, 1.0f, finalAlpha);
+
+    if (amount > 0)
+        return getNeonCyan().withAlpha(finalAlpha);
+    else
+        return getNeonPink().withAlpha(finalAlpha);
+}
+
 void ModulationGrid::mouseDown(const juce::MouseEvent& e)
 {
     draggedCell = getCellAtPosition(e.getPosition());
@@ -223,15 +295,51 @@ void ModulationGrid::paint(juce::Graphics& g)
                    colBounds.removeFromTop(15), juce::Justification::centred, false);
     }
 
-    // Draw cells
+    // Draw cells with live feedback
     for (const auto& cell : cells)
     {
-        g.setColour(getCellColour(cell.amount));
+        // Use live feedback color if enabled and cell is active
+        if (liveFeedbackEnabled && cell.active)
+        {
+            // Draw glow effect for active modulations
+            float glowIntensity = std::abs(cell.currentValue) * (0.5f + 0.5f * std::sin(animationPhase * juce::MathConstants<float>::twoPi));
+
+            if (glowIntensity > 0.05f)
+            {
+                // Outer glow
+                auto glowBounds = cell.bounds.toFloat().expanded(3.0f * glowIntensity);
+                juce::Colour glowColour = (cell.amount > 0) ? getNeonCyan() : getNeonPink();
+                g.setColour(glowColour.withAlpha(glowIntensity * 0.3f));
+                g.fillRoundedRectangle(glowBounds, 3.0f);
+            }
+
+            // Cell background with live color
+            g.setColour(getLiveFeedbackColour(cell.currentValue, cell.amount));
+        }
+        else
+        {
+            g.setColour(getCellColour(cell.amount));
+        }
+
         g.fillRect(cell.bounds);
 
         // Border
         g.setColour(juce::Colours::white.withAlpha(0.1f));
         g.drawRect(cell.bounds);
+
+        // Active modulation indicator dot (pulsing)
+        if (cell.active && liveFeedbackEnabled)
+        {
+            float dotPulse = 0.5f + 0.5f * std::sin(animationPhase * juce::MathConstants<float>::twoPi * 2.0f);
+            float dotRadius = 3.0f + 2.0f * dotPulse * std::abs(cell.currentValue);
+            float dotAlpha = 0.7f + 0.3f * dotPulse;
+
+            auto cellCentre = cell.bounds.getCentre().toFloat();
+            juce::Colour dotColour = (cell.amount > 0) ? getNeonCyan() : getNeonPink();
+            g.setColour(dotColour.withAlpha(dotAlpha));
+            g.fillEllipse(cellCentre.x - dotRadius, cellCentre.y - dotRadius,
+                          dotRadius * 2.0f, dotRadius * 2.0f);
+        }
 
         // Amount text
         if (std::abs(cell.amount) > 0.01f)

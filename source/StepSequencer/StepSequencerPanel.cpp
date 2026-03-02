@@ -4,11 +4,42 @@
 
 #include "StepSequencerPanel.h"
 #include "../TrackManager.h"
+#include "../TrackComponent.h"
+#include "../Timeline/PatternToClipConverter.h"
+#include "../Timeline/TimelineData.h"
+#include "../Timeline/TimelineTrack.h"
 
 StepSequencerPanel::StepSequencerPanel()
     : DockablePanel(PanelType::StepSequencer, "Step Sequencer")
+    , clipConverter(std::make_unique<PatternToClipConverter>())
 {
     createStepGrid();
+
+    // === Push to Timeline Button ===
+    pushToTimelineButton.setButtonText("Push to Timeline");
+    pushToTimelineButton.setColour(juce::TextButton::buttonColourId, juce::Colour(30, 30, 45));
+    pushToTimelineButton.setColour(juce::TextButton::textColourOnId, juce::Colour(0, 255, 255));
+    pushToTimelineButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0, 255, 255));
+    pushToTimelineButton.onClick = [this]() {
+        pushCurrentTrackToTimeline();
+    };
+    addAndMakeVisible(pushToTimelineButton);
+
+    // === Push All Button ===
+    pushAllButton.setButtonText("Push All");
+    pushAllButton.setColour(juce::TextButton::buttonColourId, juce::Colour(30, 30, 45));
+    pushAllButton.setColour(juce::TextButton::textColourOnId, juce::Colour(180, 0, 255));
+    pushAllButton.setColour(juce::TextButton::textColourOffId, juce::Colour(180, 0, 255));
+    pushAllButton.onClick = [this]() {
+        pushAllTracksToTimeline();
+    };
+    addAndMakeVisible(pushAllButton);
+
+    // === Status Label ===
+    statusLabel.setText("Ready", juce::dontSendNotification);
+    statusLabel.setColour(juce::Label::textColourId, juce::Colour(150, 150, 170));
+    statusLabel.setFont(juce::Font(10.0f));
+    addAndMakeVisible(statusLabel);
 }
 
 StepSequencerPanel::~StepSequencerPanel() = default;
@@ -89,6 +120,88 @@ void StepSequencerPanel::clearAll()
     }
 }
 
+void StepSequencerPanel::pushCurrentTrackToTimeline()
+{
+    if (!trackManager || !timelineData || !clipConverter)
+    {
+        statusLabel.setText("Error: No Timeline connection", juce::dontSendNotification);
+        return;
+    }
+
+    // Get the TrackComponent for the current track
+    auto& trackComponent = trackManager->getTrack(currentTrack);
+
+    // Get the TrackModel and TrackAudioProcessor
+    const auto& model = trackComponent.getModel();
+    auto& processor = trackComponent.getAudioProcessor();
+
+    // Convert pattern to clip
+    auto clip = clipConverter->convertToClip(
+        model,
+        processor,
+        playheadBeat,
+        currentBPM,
+        sampleRate
+    );
+
+    if (clip)
+    {
+        // Add clip to timeline
+        timelineData->getTrack(currentTrack).addClip(std::move(clip));
+
+        statusLabel.setText("Pushed Track " + juce::String(currentTrack + 1) + " to Timeline",
+                           juce::dontSendNotification);
+
+        if (onPatternChanged)
+            onPatternChanged();
+    }
+    else
+    {
+        statusLabel.setText("Error: Failed to create clip", juce::dontSendNotification);
+    }
+}
+
+void StepSequencerPanel::pushAllTracksToTimeline()
+{
+    if (!trackManager || !timelineData || !clipConverter)
+    {
+        statusLabel.setText("Error: No Timeline connection", juce::dontSendNotification);
+        return;
+    }
+
+    int successCount = 0;
+
+    for (int track = 0; track < TrackManager::numTracks; ++track)
+    {
+        auto& trackComponent = trackManager->getTrack(track);
+
+        // Get the TrackModel and TrackAudioProcessor
+        const auto& model = trackComponent.getModel();
+        auto& processor = trackComponent.getAudioProcessor();
+
+        // Convert pattern to clip
+        auto clip = clipConverter->convertToClip(
+            model,
+            processor,
+            playheadBeat,
+            currentBPM,
+            sampleRate
+        );
+
+        if (clip)
+        {
+            timelineData->getTrack(track).addClip(std::move(clip));
+            successCount++;
+        }
+    }
+
+    statusLabel.setText("Pushed " + juce::String(successCount) + " tracks to Timeline",
+                       juce::dontSendNotification);
+
+    if (onPatternChanged)
+        onPatternChanged();
+}
+
 void StepSequencerPanel::createStepGrid()
 {
     // Alte Buttons entfernen
@@ -146,6 +259,11 @@ void StepSequencerPanel::createStepGrid()
         }
     }
 
+    // Re-add buttons
+    addAndMakeVisible(pushToTimelineButton);
+    addAndMakeVisible(pushAllButton);
+    addAndMakeVisible(statusLabel);
+
     // Header nach vorne bringen
     if (header)
         header->toFront(false);
@@ -162,8 +280,14 @@ void StepSequencerPanel::resized()
     // Header-Bereich abziehen
     auto headerArea = contentBounds.removeFromTop(headerHeight);
 
-    // Footer-Bereich abziehen
+    // Footer-Bereich für Buttons
     auto footerArea = contentBounds.removeFromBottom(footerHeight);
+
+    // Buttons im Footer platzieren
+    auto footerRow = footerArea;
+    pushToTimelineButton.setBounds(footerRow.removeFromLeft(120).reduced(2));
+    pushAllButton.setBounds(footerRow.removeFromLeft(80).reduced(2));
+    statusLabel.setBounds(footerRow.reduced(5));
 
     // Verfügbare Größe für Grid
     int availableWidth = contentBounds.getWidth() - trackLabelWidth;

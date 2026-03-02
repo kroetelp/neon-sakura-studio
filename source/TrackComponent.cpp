@@ -24,10 +24,15 @@ void StepButton::paintButton(juce::Graphics& g, bool, bool)
     juce::Colour baseColor = findColour(juce::TextButton::buttonColourId);
 
     // Render neon glow if this is an active step
+    // Only recreate shadow when color changes to improve performance
     if (isActiveStep)
     {
-        melatonin::DropShadow glow(baseColor, 8, {0, 0});
-        glow.render(g, p);
+        if (lastGlowColor != baseColor)
+        {
+            cachedGlow = melatonin::DropShadow(baseColor, 8, {0, 0});
+            lastGlowColor = baseColor;
+        }
+        cachedGlow.render(g, p);
     }
 
     // Draw the actual button
@@ -747,6 +752,43 @@ void TrackComponent::resized()
 void TrackComponent::paint(juce::Graphics& g)
 {
     g.fillAll(getDarkBackground());
+
+    // Draw audio level meter on the right side
+    auto bounds = getLocalBounds();
+    const int meterWidth = 6;
+    auto meterArea = bounds.removeFromRight(meterWidth).reduced(1, 2);
+
+    // Meter background
+    g.setColour(juce::Colour(20, 20, 30));
+    g.fillRect(meterArea);
+
+    // Meter level (neon gradient from cyan to pink)
+    if (displayedLevel > 0.001f) {
+        const float meterHeight = meterArea.getHeight() * juce::jmin(displayedLevel, 1.0f);
+        auto meterFill = meterArea.toFloat().removeFromBottom(meterHeight);
+
+        // Gradient: green -> cyan -> pink based on level
+        juce::Colour lowColour = juce::Colour(0, 255, 100);    // Green (low)
+        juce::Colour midColour = getNeonCyan();                 // Cyan (mid)
+        juce::Colour highColour = getNeonPink();                // Pink (high/clipping)
+
+        juce::Colour meterColour;
+        if (displayedLevel < 0.5f) {
+            meterColour = lowColour.interpolatedWith(midColour, displayedLevel * 2.0f);
+        } else {
+            meterColour = midColour.interpolatedWith(highColour, (displayedLevel - 0.5f) * 2.0f);
+        }
+
+        // Draw glow effect
+        g.setColour(meterColour.withAlpha(0.3f));
+        g.fillRect(meterFill.expanded(2, 0));
+
+        // Draw main meter
+        g.setColour(meterColour);
+        g.fillRect(meterFill);
+    }
+
+    // Border
     g.setColour(juce::Colours::white.withAlpha(0.1f));
     g.drawRect(getLocalBounds().toFloat(), 1.0f);
 }
@@ -756,7 +798,8 @@ void TrackComponent::updatePlayhead(int currentStep, bool isPlaying)
     if (isResizing)
         return;
 
-    if (currentStep == lastPlayedStep && isPlaying)
+    // Only repaint if step changed OR playing state changed (e.g., stopped)
+    if (currentStep == lastPlayedStep && isPlaying == lastPlayingState)
         return;
 
     // Restore previous step's color
@@ -769,8 +812,8 @@ void TrackComponent::updatePlayhead(int currentStep, bool isPlaying)
         stepButtons[lastPlayedStep]->repaint();
     }
 
-    // Highlight new current step
-    if (currentStep >= 0 && currentStep < TrackModel::totalSteps)
+    // Highlight new current step (only if playing)
+    if (isPlaying && currentStep >= 0 && currentStep < TrackModel::totalSteps)
     {
         const bool isActive = stepButtons[currentStep]->getToggleState();
         stepButtons[currentStep]->setColour(juce::TextButton::buttonColourId,
@@ -780,6 +823,27 @@ void TrackComponent::updatePlayhead(int currentStep, bool isPlaying)
     }
 
     lastPlayedStep = currentStep;
+    lastPlayingState = isPlaying;
+}
+
+void TrackComponent::updateLevel(float newLevel)
+{
+    if (isResizing)
+        return;
+
+    // Apply smooth decay: hold peak, then slowly fall
+    // If new level is higher, jump to it; otherwise decay
+    if (newLevel > currentLevel) {
+        currentLevel = newLevel;
+    } else {
+        currentLevel = currentLevel * meterDecay + newLevel * (1.0f - meterDecay);
+    }
+
+    // Only repaint meter area if level changed significantly
+    if (std::abs(displayedLevel - currentLevel) > 0.005f) {
+        displayedLevel = currentLevel;
+        repaint(getLocalBounds().removeFromRight(8));  // Only repaint the meter strip
+    }
 }
 
 void TrackComponent::changeSampleIndex(int delta)

@@ -59,6 +59,18 @@ enum class ModulationTarget
     Filter_Resonance,
     Filter_Drive,
 
+    // FM/AM Modulation amounts
+    FM_Amount12,
+    FM_Amount13,
+    FM_Amount23,
+    AM_Amount12,
+    AM_Amount13,
+    AM_Amount23,
+
+    // Waveshaper
+    Shaper_Amount,
+    Shaper_Mix,
+
     // Master
     Master_Level,
 
@@ -117,6 +129,14 @@ namespace ModulationHelpers
             case ModulationTarget::Filter_Cutoff: return "Filter Cutoff";
             case ModulationTarget::Filter_Resonance: return "Filter Res";
             case ModulationTarget::Filter_Drive: return "Filter Drive";
+            case ModulationTarget::FM_Amount12: return "FM 1>2";
+            case ModulationTarget::FM_Amount13: return "FM 1>3";
+            case ModulationTarget::FM_Amount23: return "FM 2>3";
+            case ModulationTarget::AM_Amount12: return "AM 1>2";
+            case ModulationTarget::AM_Amount13: return "AM 1>3";
+            case ModulationTarget::AM_Amount23: return "AM 2>3";
+            case ModulationTarget::Shaper_Amount: return "Shaper Amt";
+            case ModulationTarget::Shaper_Mix: return "Shaper Mix";
             case ModulationTarget::Master_Level: return "Master Level";
             case ModulationTarget::FX1_Param: return "FX1";
             case ModulationTarget::FX2_Param: return "FX2";

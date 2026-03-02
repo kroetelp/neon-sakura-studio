@@ -116,6 +116,7 @@ private:
     juce::TextButton setFolderButton;
     juce::TextButton clearAllButton;
     juce::TextButton audioSettingsButton;
+    juce::TextButton wootingSettingsButton;  // NEU: Wooting Keyboard Settings
     juce::TextButton rhythmExplorerButton;
     juce::TextButton melodyWorkstationButton;
     juce::TextButton wavetableSynthButton;

@@ -4,6 +4,7 @@
 #include "ShaperSection.h"
 #include "ModulationSection.h"
 #include "EnvelopeSection.h"
+#include "FXSection.h"
 #include "WavetableDisplay.h"
 #include "Oscilloscope.h"
 #include "ModulationGrid.h"
@@ -41,6 +42,10 @@ WavetableSynthEditor::WavetableSynthEditor(WavetableEngine& externalEngine)
 
     envelopeSection = std::make_unique<EnvelopeSection>();
     addAndMakeVisible(envelopeSection.get());
+
+    fxSection = std::make_unique<FXSection>();
+    fxSection->connectToEngine(engine);
+    addAndMakeVisible(fxSection.get());
 
     oscilloscope = std::make_unique<Oscilloscope>();
     addAndMakeVisible(oscilloscope.get());
@@ -90,6 +95,9 @@ WavetableSynthEditor::WavetableSynthEditor(std::shared_ptr<WavetableParams> para
 
     envelopeSection = std::make_unique<EnvelopeSection>();
     addAndMakeVisible(envelopeSection.get());
+
+    fxSection = std::make_unique<FXSection>();
+    addAndMakeVisible(fxSection.get());
 
     oscilloscope = std::make_unique<Oscilloscope>();
     addAndMakeVisible(oscilloscope.get());
@@ -272,6 +280,10 @@ void WavetableSynthEditor::resized()
     modulationGrid->setBounds(modOscRow.removeFromLeft(modOscRow.getWidth() * 2 / 3).reduced(2));
     oscilloscope->setBounds(modOscRow.reduced(2));
 
+    // FX Section row
+    auto fxRow = bounds.removeFromTop(120);
+    fxSection->setBounds(fxRow.reduced(2));
+
     auto masterRow = bounds.removeFromTop(40);
     masterVolumeLabel.setBounds(masterRow.removeFromLeft(50));
     masterVolumeSlider.setBounds(masterRow.removeFromLeft(200));
@@ -285,21 +297,36 @@ void WavetableSynthEditor::resized()
     wavetableComboBox.setBounds(wtRow.removeFromLeft(300));
 
     auto presetRow = bounds.removeFromTop(35);
-    presetLabel.setBounds(presetRow.removeFromLeft(45));
-    presetComboBox.setBounds(presetRow.removeFromLeft(180));
-    presetRow.removeFromLeft(10);
-    savePresetButton.setBounds(presetRow.removeFromLeft(60));
+    presetLabel.setBounds(presetRow.removeFromLeft(50));
+    prevPresetButton.setBounds(presetRow.removeFromLeft(30));
+    nextPresetButton.setBounds(presetRow.removeFromLeft(30));
     presetRow.removeFromLeft(5);
-    saveAsPresetButton.setBounds(presetRow.removeFromLeft(70));
+    presetComboBox.setBounds(presetRow.removeFromLeft(160));
     presetRow.removeFromLeft(5);
-    loadPresetButton.setBounds(presetRow.removeFromLeft(60));
+    savePresetButton.setBounds(presetRow.removeFromLeft(50));
+    presetRow.removeFromLeft(5);
+    saveAsPresetButton.setBounds(presetRow.removeFromLeft(65));
+    presetRow.removeFromLeft(5);
+    loadPresetButton.setBounds(presetRow.removeFromLeft(50));
+    presetRow.removeFromLeft(5);
+    deletePresetButton.setBounds(presetRow.removeFromLeft(55));
 
     keyboard->setBounds(bounds.removeFromBottom(80));
 }
 
 void WavetableSynthEditor::timerCallback()
 {
-    wavetableDisplay->repaint();
+    // Note: WavetableDisplay has its own timer for repaint
+    // Only update oscilloscope with live audio data here
+    if (engine && oscilloscope)
+    {
+        constexpr int scopeSamples = 512;
+        float leftSamples[scopeSamples];
+        float rightSamples[scopeSamples];
+
+        engine->copyScopeSamples(leftSamples, rightSamples, scopeSamples);
+        oscilloscope->pushSamples(leftSamples, rightSamples, scopeSamples);
+    }
 }
 
 void WavetableSynthEditor::handleNoteOn(juce::MidiKeyboardState* source, int midiChannel, int midiNoteNumber, float velocity)
@@ -319,7 +346,6 @@ void WavetableSynthEditor::setupPresetUI()
     addAndMakeVisible(presetLabel);
     presetLabel.setText("Preset:", juce::dontSendNotification);
     presetLabel.setColour(juce::Label::textColourId, juce::Colours::white);
-    presetLabel.attachToComponent(&presetComboBox, true);
 
     addAndMakeVisible(presetComboBox);
     presetComboBox.setColour(juce::ComboBox::backgroundColourId, getDarkBackground().brighter(0.1f));
@@ -371,6 +397,36 @@ void WavetableSynthEditor::setupPresetUI()
             });
     };
 
+    // Previous Preset Button
+    addAndMakeVisible(prevPresetButton);
+    prevPresetButton.setButtonText("<");
+    prevPresetButton.setColour(juce::TextButton::buttonColourId, getDarkBackground().brighter(0.1f));
+    prevPresetButton.setColour(juce::TextButton::textColourOnId, getNeonPurple());
+    prevPresetButton.setColour(juce::TextButton::textColourOffId, getNeonPurple());
+    prevPresetButton.onClick = [this] {
+        navigatePreset(-1);
+    };
+
+    // Next Preset Button
+    addAndMakeVisible(nextPresetButton);
+    nextPresetButton.setButtonText(">");
+    nextPresetButton.setColour(juce::TextButton::buttonColourId, getDarkBackground().brighter(0.1f));
+    nextPresetButton.setColour(juce::TextButton::textColourOnId, getNeonPurple());
+    nextPresetButton.setColour(juce::TextButton::textColourOffId, getNeonPurple());
+    nextPresetButton.onClick = [this] {
+        navigatePreset(1);
+    };
+
+    // Delete Preset Button
+    addAndMakeVisible(deletePresetButton);
+    deletePresetButton.setButtonText("Delete");
+    deletePresetButton.setColour(juce::TextButton::buttonColourId, getDarkBackground().brighter(0.1f));
+    deletePresetButton.setColour(juce::TextButton::textColourOnId, juce::Colours::red);
+    deletePresetButton.setColour(juce::TextButton::textColourOffId, juce::Colours::red.withAlpha(0.7f));
+    deletePresetButton.onClick = [this] {
+        deleteCurrentPreset();
+    };
+
     scanPresets();
     currentPreset = WavetablePreset::createInitPreset();
 }
@@ -417,6 +473,9 @@ void WavetableSynthEditor::loadSelectedPreset()
     if (isEngineMode && engine)
     {
         presetManager->applyPresetToSynth(currentPreset, engine->getSynthesiser());
+        presetManager->applyPresetToEngine(currentPreset, *engine);
+        if (fxSection)
+            fxSection->updateFromParams(engine->getFXParams());
     }
     else if (sharedParams)
     {
@@ -439,6 +498,19 @@ void WavetableSynthEditor::loadSelectedPreset()
         sharedParams->setFilterResonance(currentPreset.filterParams.resonance);
         sharedParams->setFilterDrive(currentPreset.filterParams.drive);
         sharedParams->setFilterMode(currentPreset.filterParams.type);
+
+        // Waveshaper
+        sharedParams->setShaperMode(currentPreset.shaperParams.mode);
+        sharedParams->setShaperAmount(currentPreset.shaperParams.amount);
+        sharedParams->setShaperMix(currentPreset.shaperParams.mix);
+
+        // FM/AM Modulation
+        sharedParams->setFMAmount12(currentPreset.oscModulationParams.fmAmount12);
+        sharedParams->setFMAmount13(currentPreset.oscModulationParams.fmAmount13);
+        sharedParams->setFMAmount23(currentPreset.oscModulationParams.fmAmount23);
+        sharedParams->setAMAmount12(currentPreset.oscModulationParams.amAmount12);
+        sharedParams->setAMAmount13(currentPreset.oscModulationParams.amAmount13);
+        sharedParams->setAMAmount23(currentPreset.oscModulationParams.amAmount23);
 
         sharedParams->setEnvAttack(currentPreset.ampEnvelope.attack);
         sharedParams->setEnvDecay(currentPreset.ampEnvelope.decay);
@@ -463,6 +535,7 @@ void WavetableSynthEditor::saveCurrentPreset()
     }
 
     currentPreset = presetManager->extractPresetFromSynth(engine->getSynthesiser(), currentPreset.name);
+    presetManager->extractFXFromEngine(currentPreset, *engine);
 
     if (presetManager->saveUserPreset(currentPreset))
     {
@@ -491,6 +564,7 @@ void WavetableSynthEditor::savePresetAs()
             if (name.isNotEmpty())
             {
                 currentPreset = presetManager->extractPresetFromSynth(engine->getSynthesiser(), name);
+                presetManager->extractFXFromEngine(currentPreset, *engine);
                 if (presetManager->saveUserPreset(currentPreset))
                 {
                     scanPresets();
@@ -797,4 +871,95 @@ void WavetableSynthEditor::applyLoadedWavetable()
     {
         wavetableDisplay->setWavetable(loadedWavetable);
     }
+}
+
+void WavetableSynthEditor::navigatePreset(int direction)
+{
+    int currentId = presetComboBox.getSelectedId();
+    int numPresets = static_cast<int>(presetFiles.size());
+
+    // Calculate new index (wrapping)
+    int newId;
+    if (currentId == 999)  // Init preset
+    {
+        newId = (direction > 0) ? 1 : numPresets;
+    }
+    else if (currentId < 1 || currentId > numPresets)
+    {
+        newId = 1;
+    }
+    else
+    {
+        newId = currentId + direction;
+        if (newId < 1) newId = numPresets;
+        if (newId > numPresets) newId = 1;
+    }
+
+    presetComboBox.setSelectedId(newId, juce::sendNotification);
+}
+
+void WavetableSynthEditor::deleteCurrentPreset()
+{
+    int selectedId = presetComboBox.getSelectedId();
+
+    // Cannot delete Init or invalid selection
+    if (selectedId == 999 || selectedId < 1 || selectedId > static_cast<int>(presetFiles.size()))
+    {
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::AlertWindow::WarningIcon,
+            "Cannot Delete",
+            "Cannot delete the Init preset or no preset selected.",
+            "OK");
+        return;
+    }
+
+    const auto& file = presetFiles[selectedId - 1];
+
+    // Check if it's a factory preset
+    if (isFactoryPreset(file))
+    {
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::AlertWindow::WarningIcon,
+            "Cannot Delete",
+            "Factory presets cannot be deleted. Only user presets can be removed.",
+            "OK");
+        return;
+    }
+
+    // Confirm deletion
+    juce::AlertWindow::showOkCancelBox(
+        juce::AlertWindow::QuestionIcon,
+        "Delete Preset",
+        "Are you sure you want to delete the preset \"" + file.getFileNameWithoutExtension() + "\"?\n\nThis cannot be undone.",
+        "Delete",
+        "Cancel",
+        nullptr,
+        juce::ModalCallbackFunction::create([this, file](int result) {
+            if (result == 1)  // Delete clicked
+            {
+                if (presetManager->deletePreset(file))
+                {
+                    scanPresets();
+                    // Select Init after deletion
+                    presetComboBox.setSelectedId(999, juce::sendNotification);
+                }
+                else
+                {
+                    juce::AlertWindow::showMessageBoxAsync(
+                        juce::AlertWindow::WarningIcon,
+                        "Delete Failed",
+                        "Could not delete the preset file.",
+                        "OK");
+                }
+            }
+        }));
+}
+
+bool WavetableSynthEditor::isFactoryPreset(const juce::File& file) const
+{
+    if (!presetManager)
+        return false;
+
+    auto factoryDir = presetManager->getFactoryPresetDirectory();
+    return file.isAChildOf(factoryDir);
 }

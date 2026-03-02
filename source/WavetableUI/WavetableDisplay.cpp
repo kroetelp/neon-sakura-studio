@@ -428,10 +428,10 @@ void WavetableDisplay::paint(juce::Graphics& g)
     // Waveform path
     auto path = createWaveformPath(drawArea.toFloat());
 
-    // Glow effect
+    // Glow effect - update color on cached shadow
     auto glowColor = (editMode == EditMode::Draw) ? getNeonPink() : getNeonCyan();
-    melatonin::DropShadow glow(glowColor, 6, {0, 0});
-    glow.render(g, path);
+    glowShadow = melatonin::DropShadow(glowColor, 6, {0, 0});
+    glowShadow.render(g, path);
 
     // Main waveform line
     g.setColour(glowColor);

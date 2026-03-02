@@ -1,5 +1,4 @@
 #include "Oscilloscope.h"
-#include "melatonin_blur.h"
 
 Oscilloscope::Oscilloscope()
     : leftBuffer(bufferSize, 0.0f),
@@ -87,14 +86,12 @@ void Oscilloscope::paint(juce::Graphics& g)
 
     // Draw left channel
     auto leftPath = createWaveformPath(leftBuffer, displayBounds);
-    melatonin::DropShadow leftGlow(getNeonCyan(), 3, {0, 0});
     leftGlow.render(g, leftPath);
     g.setColour(getNeonCyan());
     g.strokePath(leftPath, juce::PathStrokeType(1.5f));
 
     // Draw right channel
     auto rightPath = createWaveformPath(rightBuffer, displayBounds);
-    melatonin::DropShadow rightGlow(getNeonPink(), 3, {0, 0});
     rightGlow.render(g, rightPath);
     g.setColour(getNeonPink().withAlpha(0.7f));
     g.strokePath(rightPath, juce::PathStrokeType(1.0f));

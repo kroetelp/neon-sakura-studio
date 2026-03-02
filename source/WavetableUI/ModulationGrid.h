@@ -4,9 +4,10 @@
 #include "../Modulation/ModulationSource.h"
 #include "../Modulation/ModulationMatrix.h"
 #include <vector>
+#include <atomic>
 
 /**
- * ModulationGrid - Drag-and-drop modulation matrix
+ * ModulationGrid - Drag-and-drop modulation matrix with live visual feedback
  *
  * Grid layout:
  * - Rows: Modulation sources (LFOs, Envelopes, etc.)
@@ -15,12 +16,14 @@
  * Interaction:
  * - Click and drag vertically to set modulation amount
  * - Color intensity shows modulation depth
+ * - Live pulsing/glowing effect shows current modulation activity
  */
-class ModulationGrid : public juce::Component
+class ModulationGrid : public juce::Component,
+                       private juce::Timer
 {
 public:
     ModulationGrid();
-    ~ModulationGrid() override = default;
+    ~ModulationGrid() override;
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -33,6 +36,10 @@ public:
     void mouseDrag(const juce::MouseEvent& e) override;
     void mouseUp(const juce::MouseEvent& e) override;
 
+    // Enable/disable live feedback (starts/stops timer)
+    void setLiveFeedbackEnabled(bool enabled);
+    bool isLiveFeedbackEnabled() const { return liveFeedbackEnabled; }
+
 private:
     ModulationMatrix* modMatrix = nullptr;
 
@@ -42,7 +49,8 @@ private:
         juce::Rectangle<int> bounds;
         ModulationSource source;
         ModulationTarget target;
-        float amount = 0.0f;
+        float amount = 0.0f;           // Set modulation amount
+        float currentValue = 0.0f;     // Live modulation value (from matrix)
         bool active = false;
     };
 
@@ -55,6 +63,10 @@ private:
     static constexpr int numVisibleSources = 8;
     static constexpr int numVisibleTargets = 8;
 
+    // Live feedback
+    bool liveFeedbackEnabled = false;
+    float animationPhase = 0.0f;  // For pulsing animation (0.0 - 1.0)
+
     // Colors
     static juce::Colour getNeonPink() { return juce::Colour(255, 20, 147); }
     static juce::Colour getNeonCyan() { return juce::Colour(0, 255, 255); }
@@ -65,4 +77,9 @@ private:
     void buildGrid();
     Cell* getCellAtPosition(const juce::Point<int>& pos);
     juce::Colour getCellColour(float amount) const;
+    juce::Colour getLiveFeedbackColour(float currentValue, float amount) const;
+
+    // Timer callback for live updates
+    void timerCallback() override;
+    void updateLiveValues();
 };

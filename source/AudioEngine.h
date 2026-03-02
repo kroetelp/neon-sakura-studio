@@ -83,6 +83,14 @@ public:
     uint64_t getSamplePosition() const;
     int getSamplesPerStep() const;
 
+    // Track level getter for audio meters (thread-safe)
+    float getTrackLevel(int trackIndex) const
+    {
+        if (trackIndex >= 0 && trackIndex < numTracks)
+            return trackLevels[trackIndex].load(std::memory_order_relaxed);
+        return 0.0f;
+    }
+
     // Wavetable Synth access
     WavetableEngine& getWavetableEngine() { return wavetableEngine; }
     const WavetableEngine& getWavetableEngine() const { return wavetableEngine; }
@@ -147,8 +155,12 @@ private:
 
     FastRNG probabilityRng{42};
 
-    // Buffers
+    // Buffers (pre-allocated for real-time safety)
     std::array<std::unique_ptr<juce::AudioBuffer<float>>, numTracks> trackBuffers;
+    std::array<juce::MidiBuffer, numTracks> trackMidiBuffers;  // Pre-allocated MIDI buffers
+
+    // Atomic track levels for audio meters (lock-free communication between audio and UI threads)
+    std::array<std::atomic<float>, numTracks> trackLevels{{}};
 
     // StateVariableTPTFilter is safe for real-time parameter modulation without allocations!
     std::array<std::unique_ptr<juce::dsp::StateVariableTPTFilter<float>>, numTracks> modulationFilters;

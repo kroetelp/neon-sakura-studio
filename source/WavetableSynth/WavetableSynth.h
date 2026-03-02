@@ -80,6 +80,9 @@ public:
     void setPitchBendValue(float value) { pitchBendValue = value; }
     void setAftertouchValue(float value) { aftertouchValue = value; }
 
+    // Polyphonic aftertouch - sets per-voice pressure for a specific note
+    void setPolyAftertouch(int midiNoteNumber, float pressure);
+
 private:
     std::shared_ptr<WavetableData> wavetableData;
 

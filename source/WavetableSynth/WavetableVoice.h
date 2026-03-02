@@ -68,6 +68,11 @@ public:
     // Per-voice state accessors
     float getCurrentVelocity() const { return currentVelocity; }
     int getCurrentMidiNote() const { return currentMidiNote; }
+    float getCurrentAftertouch() const { return currentAftertouch; }
+    bool isVoiceActive() const { return isActive; }
+
+    // Set per-voice aftertouch (called from synth when poly aftertouch received)
+    void setCurrentAftertouch(float value) { currentAftertouch = value; }
 
     // Create modulation context for this voice
     ModulationContext createModulationContext() const;
@@ -102,6 +107,7 @@ private:
 
     int currentMidiNote = 60;
     float currentVelocity = 1.0f;
+    float currentAftertouch = 0.0f;  // Per-voice pressure (0.0-1.0)
     float pitchBend = 0.0f;
     bool isActive = false;
 

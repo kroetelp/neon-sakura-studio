@@ -7,6 +7,7 @@
 // - Drag-to-Draw Unterstützung
 // - Neon Sakura Design
 // - Integration mit Track-System
+// - Push to Timeline Funktion
 
 #pragma once
 
@@ -18,6 +19,8 @@
 
 // Forward declarations
 class TrackManager;
+class TimelineData;
+class PatternToClipConverter;
 
 /**
  * StepSequencerPanel - DockablePanel für den Step Sequencer
@@ -27,6 +30,7 @@ class TrackManager;
  * - Drag-to-Draw (Maus gedrückt halten und wischen)
  * - Pro-Track Step-Pattern
  * - Integration mit TrackManager
+ * - Push to Timeline Button
  */
 class StepSequencerPanel : public DockablePanel
 {
@@ -48,11 +52,21 @@ public:
     void setTrackManager(TrackManager* manager);
     void setCurrentTrack(int trackIndex);
 
+    // === Timeline Integration ===
+    void setTimelineData(TimelineData* data) { timelineData = data; }
+    void setBPM(double bpm) { currentBPM = bpm; }
+    void setSampleRate(double sr) { sampleRate = sr; }
+    void setPlayheadBeat(double beat) { playheadBeat = beat; }
+
     // === Pattern Access ===
     bool isStepActive(int track, int step) const;
     void setStepActive(int track, int step, bool active);
     void clearTrack(int track);
     void clearAll();
+
+    // === Push to Timeline ===
+    void pushCurrentTrackToTimeline();
+    void pushAllTracksToTimeline();
 
     // === Pattern Callbacks ===
     std::function<void(int track, int step, bool active)> onStepChanged;
@@ -86,10 +100,24 @@ private:
     int numSteps = defaultNumSteps;
 
     TrackManager* trackManager = nullptr;
+    TimelineData* timelineData = nullptr;
     int currentTrack = 0;
+
+    // Timing info for clip placement
+    double currentBPM = 120.0;
+    double sampleRate = 44100.0;
+    double playheadBeat = 0.0;
+
+    // Pattern to Clip converter
+    std::unique_ptr<PatternToClipConverter> clipConverter;
 
     // Step Buttons Grid [track][step]
     std::vector<std::vector<std::unique_ptr<NeonStepButton>>> stepButtons;
+
+    // === UI Controls ===
+    juce::TextButton pushToTimelineButton;
+    juce::TextButton pushAllButton;
+    juce::Label statusLabel;
 
     // === Layout ===
     static constexpr int trackLabelWidth = 80;

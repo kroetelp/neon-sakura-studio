@@ -50,8 +50,14 @@ public:
     // Apply preset to synth
     void applyPresetToSynth(const WavetablePreset& preset, WavetableSynth& synth);
 
+    // Apply FX preset to engine
+    void applyPresetToEngine(const WavetablePreset& preset, WavetableEngine& engine);
+
     // Extract preset from synth
     WavetablePreset extractPresetFromSynth(WavetableSynth& synth, const juce::String& name);
+
+    // Extract FX preset from engine
+    void extractFXFromEngine(WavetablePreset& preset, WavetableEngine& engine);
 
     // Get preset name from file
     juce::String getPresetNameFromFile(const juce::File& file) const;
@@ -72,6 +78,9 @@ private:
     WavetablePreset createEvolvingPadPreset();
     WavetablePreset createAggressiveLeadPreset();
     WavetablePreset createSubBassPreset();
+    WavetablePreset createModernFMBassPreset();     // FM + Waveshaper
+    WavetablePreset createGritLeadPreset();         // AM + Foldback
+    WavetablePreset createPressureResponsivePreset(); // For aftertouch demo
 
     juce::File applicationDirectory;
     juce::File userPresetDirectory;

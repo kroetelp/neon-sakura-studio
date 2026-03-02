@@ -1,6 +1,7 @@
 #include "WavetablePresetManager.h"
 #include "WavetableSynth.h"
 #include "WavetableVoice.h"
+#include "WavetableEngine.h"
 #include "../Modulation/ModulationMatrix.h"
 #include "../Modulation/LFOModulator.h"
 #include "../Modulation/EnvelopeModulator.h"
@@ -463,6 +464,220 @@ WavetablePreset WavetablePresetManager::createSubBassPreset()
 
     return preset;
 }
+
+// Modern FM Bass - Uses FM routing and soft clipping
+WavetablePreset WavetablePresetManager::createModernFMBassPreset()
+{
+    WavetablePreset preset;
+    preset.name = "FM Bass - Modern";
+    preset.description = "FM-modulated bass with soft saturation";
+
+    // OSC 1 - Carrier (main tone)
+    preset.oscParams[0].level = 0.85f;
+    preset.oscParams[0].morph = 0.4f;
+    preset.oscParams[0].detune = 0.05f;
+    preset.oscParams[0].unisonCount = 3;
+    preset.oscParams[0].panSpread = 0.3f;
+
+    // OSC 2 - Modulator (for FM)
+    preset.oscParams[1].level = 0.0f;  // Not audible, only as modulator
+    preset.oscParams[1].morph = 0.8f;  // Bright waveform for modulation
+    preset.oscParams[1].pitchOffset = 0.0f;  // Same pitch for harmonic FM
+
+    // OSC 3 - Sub layer
+    preset.oscParams[2].level = 0.35f;
+    preset.oscParams[2].morph = 0.1f;
+    preset.oscParams[2].pitchOffset = -12.0f;
+
+    // Sub oscillator for extra low end
+    preset.subOscParams.level = 0.25f;
+    preset.subOscParams.octave = -1;
+    preset.subOscParams.waveform = 0;  // Sine
+
+    // FM Routing: OSC1 -> OSC2 for biting FM tone
+    preset.oscModulationParams.fmAmount12 = 0.45f;  // Strong FM
+    preset.oscModulationParams.fmAmount13 = 0.0f;
+    preset.oscModulationParams.fmAmount23 = 0.0f;
+    preset.oscModulationParams.amAmount12 = 0.0f;
+    preset.oscModulationParams.amAmount13 = 0.0f;
+    preset.oscModulationParams.amAmount23 = 0.0f;
+
+    // Waveshaper - Soft clip for warmth
+    preset.shaperParams.mode = 1;  // Soft Clip
+    preset.shaperParams.amount = 0.5f;
+    preset.shaperParams.mix = 0.35f;
+
+    // Filter - Tight bass filter
+    preset.filterParams.cutoff = 600.0f;
+    preset.filterParams.resonance = 0.35f;
+    preset.filterParams.drive = 0.15f;
+    preset.filterParams.type = 0;  // LP
+
+    // Envelope - Punchy
+    preset.ampEnvelope.attack = 0.002f;
+    preset.ampEnvelope.decay = 0.15f;
+    preset.ampEnvelope.sustain = 0.5f;
+    preset.ampEnvelope.release = 0.1f;
+
+    preset.masterVolume = 0.85f;
+
+    return preset;
+}
+
+// Grit Lead - Uses AM modulation and foldback distortion
+WavetablePreset WavetablePresetManager::createGritLeadPreset()
+{
+    WavetablePreset preset;
+    preset.name = "Grit Lead - Distorted";
+    preset.description = "Aggressive lead with AM and foldback";
+
+    // OSC 1 - Main carrier
+    preset.oscParams[0].level = 0.75f;
+    preset.oscParams[0].morph = 0.6f;
+    preset.oscParams[0].detune = 0.1f;
+    preset.oscParams[0].unisonCount = 3;
+    preset.oscParams[0].panSpread = 0.6f;
+
+    // OSC 2 - AM modulator (rhythmic)
+    preset.oscParams[1].level = 0.0f;  // Not audible directly
+    preset.oscParams[1].morph = 0.9f;  // Bright for AM
+    preset.oscParams[1].pitchOffset = 7.0f;  // Fifth above
+
+    // OSC 3 - High harmonic layer
+    preset.oscParams[2].level = 0.3f;
+    preset.oscParams[2].morph = 0.85f;
+    preset.oscParams[2].pitchOffset = 12.0f;  // Octave up
+    preset.oscParams[2].detune = 0.15f;
+
+    // AM Routing for gritty texture
+    preset.oscModulationParams.fmAmount12 = 0.0f;
+    preset.oscModulationParams.fmAmount13 = 0.0f;
+    preset.oscModulationParams.fmAmount23 = 0.0f;
+    preset.oscModulationParams.amAmount12 = 0.55f;  // AM from OSC2
+    preset.oscModulationParams.amAmount13 = 0.25f;  // Subtle AM on high OSC
+    preset.oscModulationParams.amAmount23 = 0.0f;
+
+    // Waveshaper - Foldback for aggressive grit
+    preset.shaperParams.mode = 3;  // Foldback
+    preset.shaperParams.amount = 0.65f;
+    preset.shaperParams.mix = 0.5f;
+
+    // Filter - Slightly open for bite
+    preset.filterParams.cutoff = 2500.0f;
+    preset.filterParams.resonance = 0.45f;
+    preset.filterParams.drive = 0.25f;
+    preset.filterParams.type = 0;  // LP
+
+    // Envelope - Sharp attack
+    preset.ampEnvelope.attack = 0.003f;
+    preset.ampEnvelope.decay = 0.2f;
+    preset.ampEnvelope.sustain = 0.6f;
+    preset.ampEnvelope.release = 0.15f;
+
+    // LFO for filter movement
+    preset.lfoParams[0].rate = 3.5f;
+    preset.lfoParams[0].depth = 0.35f;
+    preset.lfoParams[0].waveform = 3;  // Square for rhythmic
+    preset.lfoParams[0].tempoSync = true;
+    preset.lfoParams[0].syncRate = 2;  // 1/16
+
+    // Modulation routing: LFO1 -> Filter Cutoff
+    WavetablePreset::ModRouting routing;
+    routing.source = static_cast<int>(ModulationSource::LFO1);
+    routing.target = static_cast<int>(ModulationTarget::Filter_Cutoff);
+    routing.amount = 0.4f;
+    preset.modRoutings.add(routing);
+
+    preset.masterVolume = 0.75f;
+
+    return preset;
+}
+
+// Pressure Responsive - Designed for aftertouch/pressure modulation
+WavetablePreset WavetablePresetManager::createPressureResponsivePreset()
+{
+    WavetablePreset preset;
+    preset.name = "Pressure Pad";
+    preset.description = "Expressive pad responding to key pressure";
+
+    // All oscillators active for rich sound
+    preset.oscParams[0].level = 0.6f;
+    preset.oscParams[0].morph = 0.5f;
+    preset.oscParams[0].detune = 0.03f;
+    preset.oscParams[0].unisonCount = 5;
+    preset.oscParams[0].panSpread = 0.7f;
+
+    preset.oscParams[1].level = 0.5f;
+    preset.oscParams[1].morph = 0.6f;
+    preset.oscParams[1].detune = 0.05f;
+    preset.oscParams[1].pan = -0.4f;
+
+    preset.oscParams[2].level = 0.4f;
+    preset.oscParams[2].morph = 0.4f;
+    preset.oscParams[2].detune = 0.07f;
+    preset.oscParams[2].pan = 0.4f;
+
+    // Sub oscillator
+    preset.subOscParams.level = 0.2f;
+    preset.subOscParams.octave = -1;
+    preset.subOscParams.waveform = 0;  // Sine
+
+    // Subtle FM for movement
+    preset.oscModulationParams.fmAmount12 = 0.15f;
+    preset.oscModulationParams.fmAmount13 = 0.1f;
+    preset.oscModulationParams.fmAmount23 = 0.0f;
+    preset.oscModulationParams.amAmount12 = 0.0f;
+    preset.oscModulationParams.amAmount13 = 0.0f;
+    preset.oscModulationParams.amAmount23 = 0.0f;
+
+    // Soft waveshaper
+    preset.shaperParams.mode = 1;  // Soft Clip
+    preset.shaperParams.amount = 0.25f;
+    preset.shaperParams.mix = 0.2f;
+
+    // Filter - starts closed, opens with pressure
+    preset.filterParams.cutoff = 800.0f;  // Low base cutoff
+    preset.filterParams.resonance = 0.2f;
+    preset.filterParams.drive = 0.1f;
+    preset.filterParams.type = 0;  // LP
+
+    // Slow envelope
+    preset.ampEnvelope.attack = 0.6f;
+    preset.ampEnvelope.decay = 0.4f;
+    preset.ampEnvelope.sustain = 0.8f;
+    preset.ampEnvelope.release = 0.8f;
+
+    // LFO for subtle movement
+    preset.lfoParams[0].rate = 0.15f;
+    preset.lfoParams[0].depth = 0.3f;
+    preset.lfoParams[0].waveform = 0;  // Sine
+
+    // Modulation routing: LFO1 -> OSC1 Morph
+    WavetablePreset::ModRouting routing1;
+    routing1.source = static_cast<int>(ModulationSource::LFO1);
+    routing1.target = static_cast<int>(ModulationTarget::Osc1_Morph);
+    routing1.amount = 0.25f;
+    preset.modRoutings.add(routing1);
+
+    // Modulation routing: Aftertouch -> Filter Cutoff (key feature!)
+    WavetablePreset::ModRouting routing2;
+    routing2.source = static_cast<int>(ModulationSource::Aftertouch);
+    routing2.target = static_cast<int>(ModulationTarget::Filter_Cutoff);
+    routing2.amount = 0.7f;  // Strong response to pressure
+    preset.modRoutings.add(routing2);
+
+    // Modulation routing: Aftertouch -> FM Amount (expressive FM)
+    WavetablePreset::ModRouting routing3;
+    routing3.source = static_cast<int>(ModulationSource::Aftertouch);
+    routing3.target = static_cast<int>(ModulationTarget::Osc1_Morph);
+    routing3.amount = 0.4f;
+    preset.modRoutings.add(routing3);
+
+    preset.masterVolume = 0.65f;
+
+    return preset;
+}
+
 void WavetablePresetManager::createFactoryPresets()
 {
     auto factoryDir = getFactoryPresetDirectory();
@@ -474,6 +689,10 @@ void WavetablePresetManager::createFactoryPresets()
     savePresetToFile(createEvolvingPadPreset(), factoryDir.getChildFile("Evolving Pad.wtpreset"));
     savePresetToFile(createAggressiveLeadPreset(), factoryDir.getChildFile("Aggressive Lead.wtpreset"));
     savePresetToFile(createSubBassPreset(), factoryDir.getChildFile("Sub Bass.wtpreset"));
+    // New presets with FM/AM and Waveshaper
+    savePresetToFile(createModernFMBassPreset(), factoryDir.getChildFile("FM Bass - Modern.wtpreset"));
+    savePresetToFile(createGritLeadPreset(), factoryDir.getChildFile("Grit Lead - Distorted.wtpreset"));
+    savePresetToFile(createPressureResponsivePreset(), factoryDir.getChildFile("Pressure Pad.wtpreset"));
     savePresetToFile(WavetablePreset::createInitPreset(), factoryDir.getChildFile("Init.wtpreset"));
 }
 
@@ -481,7 +700,7 @@ void WavetablePresetManager::applyPresetToSynth(const WavetablePreset& preset, W
 {
     auto& params = synth.getParams();
 
-    // Apply oscillator parameters
+    // Apply oscillator parameters (legacy VoiceParams)
     for (int i = 0; i < 3; ++i)
     {
         const auto& oscP = preset.oscParams[i];
@@ -513,6 +732,24 @@ void WavetablePresetManager::applyPresetToSynth(const WavetablePreset& preset, W
 
     // Apply master
     params.masterLevel.store(preset.masterVolume);
+
+    // Apply extended parameters via sharedParams (WavetableParams)
+    auto sharedParams = synth.getSharedParams();
+    if (sharedParams)
+    {
+        // Waveshaper
+        sharedParams->setShaperMode(preset.shaperParams.mode);
+        sharedParams->setShaperAmount(preset.shaperParams.amount);
+        sharedParams->setShaperMix(preset.shaperParams.mix);
+
+        // FM/AM Modulation
+        sharedParams->setFMAmount12(preset.oscModulationParams.fmAmount12);
+        sharedParams->setFMAmount13(preset.oscModulationParams.fmAmount13);
+        sharedParams->setFMAmount23(preset.oscModulationParams.fmAmount23);
+        sharedParams->setAMAmount12(preset.oscModulationParams.amAmount12);
+        sharedParams->setAMAmount13(preset.oscModulationParams.amAmount13);
+        sharedParams->setAMAmount23(preset.oscModulationParams.amAmount23);
+    }
 
     // Apply LFOs
     for (int i = 0; i < 4 && i < WavetableSynth::numLFOs; ++i)
@@ -551,7 +788,7 @@ WavetablePreset WavetablePresetManager::extractPresetFromSynth(WavetableSynth& s
 
     auto& params = synth.getParams();
 
-    // Extract oscillator parameters
+    // Extract oscillator parameters (legacy VoiceParams)
     for (int i = 0; i < 3; ++i)
     {
         preset.oscParams[i].level = params.oscLevels[i].load();
@@ -583,6 +820,24 @@ WavetablePreset WavetablePresetManager::extractPresetFromSynth(WavetableSynth& s
     // Extract master
     preset.masterVolume = params.masterLevel.load();
 
+    // Extract extended parameters via sharedParams (WavetableParams)
+    auto sharedParams = synth.getSharedParams();
+    if (sharedParams)
+    {
+        // Waveshaper
+        preset.shaperParams.mode = sharedParams->getShaperMode();
+        preset.shaperParams.amount = sharedParams->getShaperAmount();
+        preset.shaperParams.mix = sharedParams->getShaperMix();
+
+        // FM/AM Modulation
+        preset.oscModulationParams.fmAmount12 = sharedParams->getFMAmount12();
+        preset.oscModulationParams.fmAmount13 = sharedParams->getFMAmount13();
+        preset.oscModulationParams.fmAmount23 = sharedParams->getFMAmount23();
+        preset.oscModulationParams.amAmount12 = sharedParams->getAMAmount12();
+        preset.oscModulationParams.amAmount13 = sharedParams->getAMAmount13();
+        preset.oscModulationParams.amAmount23 = sharedParams->getAMAmount23();
+    }
+
     // Extract LFOs (only available getters)
     for (int i = 0; i < 4 && i < WavetableSynth::numLFOs; ++i)
     {
@@ -611,6 +866,46 @@ WavetablePreset WavetablePresetManager::extractPresetFromSynth(WavetableSynth& s
     }
 
     return preset;
+}
+
+void WavetablePresetManager::applyPresetToEngine(const WavetablePreset& preset, WavetableEngine& engine)
+{
+    auto& fxParams = engine.getFXParams();
+
+    // Apply Chorus
+    fxParams.chorusMix.store(preset.fxParams.chorusMix);
+    fxParams.chorusRate.store(preset.fxParams.chorusRate);
+    fxParams.chorusDepth.store(preset.fxParams.chorusDepth);
+
+    // Apply Delay
+    fxParams.delayMix.store(preset.fxParams.delayMix);
+    fxParams.delayTime.store(preset.fxParams.delayTime);
+    fxParams.delayFeedback.store(preset.fxParams.delayFeedback);
+
+    // Apply Reverb
+    fxParams.reverbMix.store(preset.fxParams.reverbMix);
+    fxParams.reverbSize.store(preset.fxParams.reverbSize);
+    fxParams.reverbDamping.store(preset.fxParams.reverbDamping);
+}
+
+void WavetablePresetManager::extractFXFromEngine(WavetablePreset& preset, WavetableEngine& engine)
+{
+    const auto& fxParams = engine.getFXParams();
+
+    // Extract Chorus
+    preset.fxParams.chorusMix = fxParams.chorusMix.load();
+    preset.fxParams.chorusRate = fxParams.chorusRate.load();
+    preset.fxParams.chorusDepth = fxParams.chorusDepth.load();
+
+    // Extract Delay
+    preset.fxParams.delayMix = fxParams.delayMix.load();
+    preset.fxParams.delayTime = fxParams.delayTime.load();
+    preset.fxParams.delayFeedback = fxParams.delayFeedback.load();
+
+    // Extract Reverb
+    preset.fxParams.reverbMix = fxParams.reverbMix.load();
+    preset.fxParams.reverbSize = fxParams.reverbSize.load();
+    preset.fxParams.reverbDamping = fxParams.reverbDamping.load();
 }
 
 juce::String WavetablePresetManager::getPresetNameFromFile(const juce::File& file) const

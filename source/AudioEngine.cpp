@@ -71,6 +71,10 @@ void AudioEngine::prepareToPlay(int samplesPerBlockExpected, double newSampleRat
         modulationFilters[i]->reset();
 
         trackProvider->getSynthesiser(i).setCurrentPlaybackSampleRate(newSampleRate);
+
+        // Pre-allocate MIDI buffers to prevent heap allocation in audio thread
+        // 2048 events should be more than enough for any single buffer
+        trackMidiBuffers[i].ensureSize(2048);
     }
 
     // Sync with PlaybackController if available
@@ -116,7 +120,9 @@ void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferTo
     const bool localIsPlaying = playing.load();
     const float swingVal = swingAmount.load();
 
-    std::array<juce::MidiBuffer, numTracks> trackMidiBuffers;
+    // Clear pre-allocated MIDI buffers (no heap allocation!)
+    for (int i = 0; i < numTracks; ++i)
+        trackMidiBuffers[i].clear();
 
     if (localIsPlaying && localSamplesPerStep > 0)
     {
@@ -253,6 +259,17 @@ void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferTo
 
     renderAndMixTracks(bufferToFill, trackMidiBuffers);
     applyMasterReverb(*bufferToFill.buffer);
+
+    // === Update Timeline Playhead for visual sync ===
+    // This keeps the timeline playhead in sync with the step sequencer playback
+    if (localIsPlaying && timelineData != nullptr)
+    {
+        const double bpm = timelineData->getBPM();
+        const double beatsPerSecond = bpm / 60.0;
+        const double samplesPerBeatVal = currentSampleRate / beatsPerSecond;
+        const double currentBeat = static_cast<double>(samplePosition.load()) / samplesPerBeatVal;
+        timelineData->playheadBeat.store(currentBeat);
+    }
 }
 
 void AudioEngine::releaseResources()
@@ -297,6 +314,12 @@ void AudioEngine::stopPlayback()
         trackLastRatchet[i] = -1;
     }
 
+    // Reset timeline playhead
+    if (timelineData != nullptr)
+    {
+        timelineData->playheadBeat.store(0.0);
+    }
+
     if (playbackController)
         playbackController->stopPlayback();
 }
@@ -317,6 +340,12 @@ void AudioEngine::resetPlaybackPosition()
     {
         trackLastStep[i] = -1;
         trackLastRatchet[i] = -1;
+    }
+
+    // Reset timeline playhead
+    if (timelineData != nullptr)
+    {
+        timelineData->playheadBeat.store(0.0);
     }
 
     if (playbackController)
@@ -435,11 +464,15 @@ void AudioEngine::renderAndMixTracks(const juce::AudioSourceChannelInfo& bufferT
         // Get track type
         const TrackType trackType = trackProvider->getTrackType(trackIdx);
 
-        // Use pre-allocated buffer (assert to catch buffer overruns in debug)
+        // Use pre-allocated buffer with safety check
         auto& tempBuffer = *trackBuffers[trackIdx];
 
-        // Safety check: buffer should never exceed pre-allocated size
-        jassert(tempBuffer.getNumSamples() >= bufferToFill.numSamples);
+        // Safety check: if buffer is too small, skip this track (prevents crash)
+        if (tempBuffer.getNumSamples() < bufferToFill.numSamples)
+        {
+            jassertfalse;  // This should never happen - buffer was pre-allocated
+            continue;
+        }
 
         tempBuffer.clear();
 
@@ -486,6 +519,13 @@ void AudioEngine::renderAndMixTracks(const juce::AudioSourceChannelInfo& bufferT
             trackProvider->processAudioBlock(trackIdx, tempBuffer);
         }
 
+        // Calculate peak level for audio meter (lock-free write to atomic)
+        float currentPeak = tempBuffer.getMagnitude(0, bufferToFill.numSamples);
+        if (tempBuffer.getNumChannels() > 1) {
+            currentPeak = juce::jmax(currentPeak, tempBuffer.getMagnitude(1, bufferToFill.numSamples));
+        }
+        trackLevels[trackIdx].store(currentPeak, std::memory_order_relaxed);
+
         for (int channel = 0; channel < bufferToFill.buffer->getNumChannels(); ++channel)
         {
             bufferToFill.buffer->addFrom(channel, 0, tempBuffer, channel, 0, bufferToFill.numSamples, vol);
@@ -495,8 +535,12 @@ void AudioEngine::renderAndMixTracks(const juce::AudioSourceChannelInfo& bufferT
     // Process Wavetable Synth in Standalone mode
     if (wavetableEngine.getMode() == WavetableEngine::Mode::Standalone)
     {
-        // Safety check: buffer should never exceed pre-allocated size
-        jassert(wavetableBuffer->getNumSamples() >= bufferToFill.numSamples);
+        // Safety check: if buffer is too small, skip processing (prevents crash)
+        if (wavetableBuffer->getNumSamples() < bufferToFill.numSamples)
+        {
+            jassertfalse;  // This should never happen - buffer was pre-allocated
+            return;
+        }
 
         wavetableBuffer->clear();
         wavetableMidiBuffer.clear();

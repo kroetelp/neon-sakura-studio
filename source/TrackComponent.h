@@ -39,6 +39,11 @@ public:
     }
 
     void paintButton(juce::Graphics& g, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override;
+
+private:
+    // Cached shadow - avoid recreating every paint call
+    melatonin::DropShadow cachedGlow { juce::Colours::transparentBlack, 8, {0, 0} };
+    juce::Colour lastGlowColor;  // Track color changes to update shadow only when needed
 };
 
 class TrackComponent : public juce::Component
@@ -74,6 +79,7 @@ public:
     juce::ComboBox& getComboBox() { return categoryComboBox; }
     void loadSampleForCategory(const juce::String& category, const juce::File& sampleDirectory);
     void updatePlayhead(int currentStep, bool isPlaying);
+    void updateLevel(float newLevel);  // Update audio meter level
 
     // Control value getters (delegated to AudioProcessor)
     float getVolume() const { return audioProcessor.getVolume(); }
@@ -98,6 +104,11 @@ public:
     // Track type control
     TrackType getTrackType() const { return model.getTrackType(); }
     void setTrackType(TrackType type);
+
+    // Model and Processor access (for Pattern to Clip conversion)
+    const TrackModel& getModel() const { return model; }
+    TrackAudioProcessor& getAudioProcessor() { return audioProcessor; }
+    const TrackAudioProcessor& getAudioProcessor() const { return audioProcessor; }
 
     // Wavetable params access (for UI integration)
     std::shared_ptr<WavetableParams> getWavetableParams() const { return audioProcessor.getWavetableParams(); }
@@ -186,8 +197,14 @@ private:
     juce::Slider loopLengthSlider;
     juce::Label loopLengthLabel;
 
-    // Playhead caching
+    // Playhead caching (prevents unnecessary repaints)
     int lastPlayedStep{-1};
+    bool lastPlayingState{false};
+
+    // Audio meter state (smooth decay for visual appeal)
+    float currentLevel{0.0f};
+    float displayedLevel{0.0f};
+    static constexpr float meterDecay = 0.92f;  // How fast the meter falls (0.9-0.95 is smooth)
 
     // Flag to prevent repaints during resize
     bool isResizing{false};

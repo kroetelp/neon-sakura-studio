@@ -129,6 +129,76 @@ struct WavetablePreset
         }
     } filterParams;
 
+    // Waveshaper Parameters
+    struct ShaperParams
+    {
+        int mode = 0;          // 0 = Off, 1 = Soft Clip, 2 = Hard Clip, 3 = Foldback, 4 = Sine, etc.
+        float amount = 0.0f;   // 0.0 - 1.0
+        float mix = 0.0f;      // 0.0 - 1.0 (dry/wet)
+
+        juce::DynamicObject::Ptr toJSON() const
+        {
+            auto obj = new juce::DynamicObject();
+            obj->setProperty("mode", mode);
+            obj->setProperty("amount", amount);
+            obj->setProperty("mix", mix);
+            return obj;
+        }
+
+        static ShaperParams fromJSON(const juce::DynamicObject* obj)
+        {
+            ShaperParams params;
+            if (obj)
+            {
+                params.mode = static_cast<int>(obj->getProperty("mode"));
+                params.amount = static_cast<float>(obj->getProperty("amount"));
+                params.mix = static_cast<float>(obj->getProperty("mix"));
+            }
+            return params;
+        }
+    } shaperParams;
+
+    // FM/AM Modulation Parameters (between oscillators)
+    struct OscModulationParams
+    {
+        // FM routing: OSC1 -> OSC2, OSC1 -> OSC3, OSC2 -> OSC3
+        float fmAmount12 = 0.0f;
+        float fmAmount13 = 0.0f;
+        float fmAmount23 = 0.0f;
+
+        // AM routing: OSC1 -> OSC2, OSC1 -> OSC3, OSC2 -> OSC3
+        float amAmount12 = 0.0f;
+        float amAmount13 = 0.0f;
+        float amAmount23 = 0.0f;
+
+        juce::DynamicObject::Ptr toJSON() const
+        {
+            auto obj = new juce::DynamicObject();
+            obj->setProperty("fmAmount12", fmAmount12);
+            obj->setProperty("fmAmount13", fmAmount13);
+            obj->setProperty("fmAmount23", fmAmount23);
+            obj->setProperty("amAmount12", amAmount12);
+            obj->setProperty("amAmount13", amAmount13);
+            obj->setProperty("amAmount23", amAmount23);
+            return obj;
+        }
+
+        static OscModulationParams fromJSON(const juce::DynamicObject* obj)
+        {
+            OscModulationParams params;
+            if (obj)
+            {
+                params.fmAmount12 = static_cast<float>(obj->getProperty("fmAmount12"));
+                params.fmAmount13 = static_cast<float>(obj->getProperty("fmAmount13"));
+                params.fmAmount23 = static_cast<float>(obj->getProperty("fmAmount23"));
+                params.amAmount12 = static_cast<float>(obj->getProperty("amAmount12"));
+                params.amAmount13 = static_cast<float>(obj->getProperty("amAmount13"));
+                params.amAmount23 = static_cast<float>(obj->getProperty("amAmount23"));
+            }
+            return params;
+        }
+    } oscModulationParams;
+
     // Amp Envelope Parameters
     struct EnvelopeParams
     {
@@ -238,6 +308,86 @@ struct WavetablePreset
     // Master volume
     float masterVolume = 0.8f;
 
+    // Master FX Parameters
+    struct FXParams
+    {
+        // Chorus
+        float chorusMix = 0.0f;
+        float chorusRate = 1.0f;
+        float chorusDepth = 0.25f;
+
+        // Delay
+        float delayMix = 0.0f;
+        float delayTime = 0.33f;
+        float delayFeedback = 0.4f;
+
+        // Reverb
+        float reverbMix = 0.0f;
+        float reverbSize = 0.5f;
+        float reverbDamping = 0.5f;
+
+        juce::DynamicObject::Ptr toJSON() const
+        {
+            auto obj = new juce::DynamicObject();
+
+            // Chorus
+            auto* chorusObj = new juce::DynamicObject();
+            chorusObj->setProperty("mix", chorusMix);
+            chorusObj->setProperty("rate", chorusRate);
+            chorusObj->setProperty("depth", chorusDepth);
+            obj->setProperty("chorus", juce::var(chorusObj));
+
+            // Delay
+            auto* delayObj = new juce::DynamicObject();
+            delayObj->setProperty("mix", delayMix);
+            delayObj->setProperty("time", delayTime);
+            delayObj->setProperty("feedback", delayFeedback);
+            obj->setProperty("delay", juce::var(delayObj));
+
+            // Reverb
+            auto* reverbObj = new juce::DynamicObject();
+            reverbObj->setProperty("mix", reverbMix);
+            reverbObj->setProperty("size", reverbSize);
+            reverbObj->setProperty("damping", reverbDamping);
+            obj->setProperty("reverb", juce::var(reverbObj));
+
+            return obj;
+        }
+
+        static FXParams fromJSON(const juce::DynamicObject* obj)
+        {
+            FXParams params;
+            if (!obj)
+                return params;
+
+            // Chorus
+            if (auto* chorusObj = obj->getProperty("chorus").getDynamicObject())
+            {
+                params.chorusMix = static_cast<float>(chorusObj->getProperty("mix"));
+                params.chorusRate = static_cast<float>(chorusObj->getProperty("rate"));
+                params.chorusDepth = static_cast<float>(chorusObj->getProperty("depth"));
+            }
+
+            // Delay
+            if (auto* delayObj = obj->getProperty("delay").getDynamicObject())
+            {
+                params.delayMix = static_cast<float>(delayObj->getProperty("mix"));
+                params.delayTime = static_cast<float>(delayObj->getProperty("time"));
+                params.delayFeedback = static_cast<float>(delayObj->getProperty("feedback"));
+            }
+
+            // Reverb
+            if (auto* reverbObj = obj->getProperty("reverb").getDynamicObject())
+            {
+                params.reverbMix = static_cast<float>(reverbObj->getProperty("mix"));
+                params.reverbSize = static_cast<float>(reverbObj->getProperty("size"));
+                params.reverbDamping = static_cast<float>(reverbObj->getProperty("damping"));
+            }
+
+            return params;
+        }
+    } fxParams;
+
     // JSON Serialization
     juce::String toJSON() const
     {
@@ -261,6 +411,12 @@ struct WavetablePreset
         // Filter
         root->setProperty("filter", juce::var(filterParams.toJSON()));
 
+        // Waveshaper
+        root->setProperty("shaper", juce::var(shaperParams.toJSON()));
+
+        // OSC Modulation (FM/AM)
+        root->setProperty("oscModulation", juce::var(oscModulationParams.toJSON()));
+
         // Envelope
         root->setProperty("ampEnvelope", juce::var(ampEnvelope.toJSON()));
 
@@ -278,6 +434,9 @@ struct WavetablePreset
 
         // Master
         root->setProperty("masterVolume", masterVolume);
+
+        // Master FX
+        root->setProperty("fx", juce::var(fxParams.toJSON()));
 
         return juce::JSON::toString(juce::var(root));
     }
@@ -312,6 +471,14 @@ struct WavetablePreset
             if (auto* filterObj = root->getProperty("filter").getDynamicObject())
                 preset.filterParams = FilterParams::fromJSON(filterObj);
 
+            // Waveshaper
+            if (auto* shaperObj = root->getProperty("shaper").getDynamicObject())
+                preset.shaperParams = ShaperParams::fromJSON(shaperObj);
+
+            // OSC Modulation (FM/AM)
+            if (auto* modObj = root->getProperty("oscModulation").getDynamicObject())
+                preset.oscModulationParams = OscModulationParams::fromJSON(modObj);
+
             // Envelope
             if (auto* envObj = root->getProperty("ampEnvelope").getDynamicObject())
                 preset.ampEnvelope = EnvelopeParams::fromJSON(envObj);
@@ -338,6 +505,10 @@ struct WavetablePreset
 
             // Master
             preset.masterVolume = static_cast<float>(root->getProperty("masterVolume"));
+
+            // Master FX
+            if (auto* fxObj = root->getProperty("fx").getDynamicObject())
+                preset.fxParams = FXParams::fromJSON(fxObj);
         }
 
         return preset;

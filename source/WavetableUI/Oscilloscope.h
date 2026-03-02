@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_basics/juce_audio_basics.h>
+#include "melatonin_blur.h"
 #include <vector>
 
 /**
@@ -29,6 +30,10 @@ private:
     std::vector<float> leftBuffer;
     std::vector<float> rightBuffer;
     int writePosition = 0;
+
+    // Cached shadow objects (avoid recreation every paint call)
+    melatonin::DropShadow leftGlow { juce::Colour(0, 255, 255), 3, {0, 0} };
+    melatonin::DropShadow rightGlow { juce::Colour(255, 20, 147), 3, {0, 0} };
 
     // Colors
     static juce::Colour getNeonPink() { return juce::Colour(255, 20, 147); }

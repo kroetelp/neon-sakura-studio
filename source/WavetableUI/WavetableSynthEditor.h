@@ -14,6 +14,7 @@ class FilterSection;
 class EnvelopeSection;
 class ShaperSection;
 class ModulationSection;
+class FXSection;
 class WavetableDisplay;
 class Oscilloscope;
 class ModulationGrid;
@@ -67,6 +68,7 @@ private:
     std::unique_ptr<ShaperSection> shaperSection;
     std::unique_ptr<ModulationSection> modulationSection;
     std::unique_ptr<EnvelopeSection> envelopeSection;
+    std::unique_ptr<FXSection> fxSection;
     std::unique_ptr<Oscilloscope> oscilloscope;
     std::unique_ptr<ModulationGrid> modulationGrid;
 
@@ -78,6 +80,9 @@ private:
     juce::TextButton savePresetButton;
     juce::TextButton loadPresetButton;
     juce::TextButton saveAsPresetButton;
+    juce::TextButton prevPresetButton;
+    juce::TextButton nextPresetButton;
+    juce::TextButton deletePresetButton;
     juce::ComboBox presetComboBox;
     juce::Label presetLabel;
 
@@ -108,6 +113,9 @@ private:
     void savePresetAs();
     void updatePresetComboBox();
     void applyPresetToUI();
+    void navigatePreset(int direction);  // -1 = previous, +1 = next
+    void deleteCurrentPreset();
+    bool isFactoryPreset(const juce::File& file) const;
 
     void setupWavetableUI();
     void openWavetableFolder();

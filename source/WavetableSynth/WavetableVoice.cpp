@@ -100,7 +100,7 @@ ModulationContext WavetableVoice::createModulationContext() const
 {
     ModulationContext ctx;
     ctx.velocity = currentVelocity;
-    ctx.aftertouch = 0.0f;  // Per-voice aftertouch not yet implemented
+    ctx.aftertouch = currentAftertouch;  // Now uses per-voice aftertouch
     ctx.midiNote = currentMidiNote;
     return ctx;
 }

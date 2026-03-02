@@ -144,12 +144,16 @@ target_sources(NeonSakuraStudio
     source/WavetableUI/ModulationSection.cpp
     source/WavetableUI/EnvelopeSection.h
     source/WavetableUI/EnvelopeSection.cpp
+    source/WavetableUI/FXSection.h
+    source/WavetableUI/FXSection.cpp
     source/WavetableUI/WavetableDisplay.h
     source/WavetableUI/WavetableDisplay.cpp
     source/WavetableUI/Oscilloscope.h
     source/WavetableUI/Oscilloscope.cpp
     source/WavetableUI/ModulationGrid.h
     source/WavetableUI/ModulationGrid.cpp
+    source/WavetableUI/WootingSettingsPanel.h
+    source/WavetableUI/WootingSettingsPanel.cpp
 
     # Timeline
     source/Timeline/TimelineClip.h
@@ -159,6 +163,8 @@ target_sources(NeonSakuraStudio
     source/Timeline/TimelineData.cpp
     source/Timeline/RecordingManager.h
     source/Timeline/RecordingManager.cpp
+    source/Timeline/PatternToClipConverter.h
+    source/Timeline/PatternToClipConverter.cpp
     source/Timeline/TimelineComponent.h
     source/Timeline/TimelineComponent.cpp
     source/Timeline/TimelineTransport.h
@@ -199,8 +205,34 @@ if(JUCE_WINDOWS)
 endif()
 
 # =========================================================
-# WOOTING ANALOG SDK INTEGRATION
+# WOOTING ANALOG SDK INTEGRATION (Windows only)
 # =========================================================
-# (Stelle sicher, dass diese Ordner auf deinem PC existieren)
-target_include_directories(NeonSakuraStudio PRIVATE "thirdparty/wooting/include")
-target_link_libraries(NeonSakuraStudio PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/wooting/lib/wooting_analog_sdk.dll.lib")
+if(WIN32)
+    # Check if Wooting SDK exists before linking
+    set(WOOTING_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/wooting/include")
+    set(WOOTING_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/wooting/lib")
+
+    if(EXISTS "${WOOTING_INCLUDE_DIR}" AND EXISTS "${WOOTING_LIB_DIR}")
+        target_include_directories(NeonSakuraStudio PRIVATE "${WOOTING_INCLUDE_DIR}")
+
+        # Find the correct library file (could be .lib or .dll.lib)
+        find_library(WOOTING_LIB
+            NAMES wooting_analog_sdk wooting_analog_sdk.dll
+            PATHS "${WOOTING_LIB_DIR}"
+            NO_DEFAULT_PATH
+        )
+
+        if(WOOTING_LIB)
+            target_link_libraries(NeonSakuraStudio PRIVATE "${WOOTING_LIB}")
+            message(STATUS "Wooting Analog SDK found: ${WOOTING_LIB}")
+        else()
+            message(WARNING "Wooting Analog SDK library not found in ${WOOTING_LIB_DIR}")
+        endif()
+    else()
+        message(STATUS "Wooting Analog SDK not found - keyboard features disabled")
+    endif()
+elseif(APPLE)
+    message(STATUS "Wooting Analog SDK not available on macOS - keyboard features disabled")
+elseif(UNIX)
+    message(STATUS "Wooting Analog SDK not available on Linux - keyboard features disabled")
+endif()

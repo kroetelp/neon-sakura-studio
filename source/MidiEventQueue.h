@@ -84,6 +84,17 @@ struct MidiEvent
         e.aftertouchVal = val;
         return e;
     }
+
+    // Polyphonic Aftertouch (per-note pressure)
+    static MidiEvent polyAftertouch(uint8_t ch, uint8_t note, uint8_t val)
+    {
+        MidiEvent e{};
+        e.type = Aftertouch;  // Reuse Aftertouch type
+        e.channel = ch;
+        e.noteNumber = note;  // Store note number for poly aftertouch
+        e.controllerVal = val; // Store pressure value here (0-127)
+        return e;
+    }
 };
 
 /**

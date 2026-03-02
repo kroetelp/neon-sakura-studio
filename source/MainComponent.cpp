@@ -6,6 +6,7 @@
 #include "DockingManager.h"
 #include "Timeline/TimelinePanel.h"
 #include "WavetableUI/WavetablePanel.h"
+#include "WavetableUI/WootingSettingsPanel.h"
 #include "StepSequencer/StepSequencerPanel.h"
 #include "AudioEngine.h"
 #include "PatternGenerator.h"
@@ -36,7 +37,7 @@ MainComponent::MainComponent()
     }
 
     setAudioChannels(2, 2);
-    startTimerHz(15);
+    startTimerHz(60);  // 60 Hz for smooth playhead animation (repaints only on change)
     setSize(1600, 900);  // Kompakter für Single-Window
 }
 
@@ -193,6 +194,11 @@ void MainComponent::initializeUI()
     audioSettingsButton.setColour(juce::TextButton::buttonColourId, getDarkBackground());
     audioSettingsButton.setColour(juce::TextButton::textColourOffId, getNeonCyan());
     addAndMakeVisible(audioSettingsButton);
+
+    wootingSettingsButton.setButtonText("Wooting");
+    wootingSettingsButton.setColour(juce::TextButton::buttonColourId, getDarkBackground());
+    wootingSettingsButton.setColour(juce::TextButton::textColourOffId, getNeonGreen());
+    addAndMakeVisible(wootingSettingsButton);
 
     bpmSlider.setRange(60.0, 200.0, 1.0);
     bpmSlider.setValue(120.0);
@@ -418,6 +424,21 @@ void MainComponent::connectUICallbacks()
     clearAllButton.onClick = [this] { trackManager->clearAllTracks(); };
     audioSettingsButton.onClick = [this] { showAudioSettingsDialog(); };
 
+    wootingSettingsButton.onClick = [this] {
+        auto* panel = new WootingSettingsPanel(*wootingManager);
+        panel->setSize(300, 280);
+
+        juce::DialogWindow::LaunchOptions options;
+        options.content.setOwned(panel);
+        options.dialogTitle = "Wooting Keyboard Configuration";
+        options.dialogBackgroundColour = getDarkBackground();
+        options.escapeKeyTriggersCloseButton = true;
+        options.useNativeTitleBar = true;
+        options.resizable = false;
+
+        options.launchAsync();
+    };
+
     bpmSlider.onValueChange = [this] {
         playbackController->setBPM(bpmSlider.getValue());
         audioEngine->setBPM(bpmSlider.getValue());
@@ -608,75 +629,73 @@ void MainComponent::layoutTracks(juce::Rectangle<int> area)
 
 void MainComponent::layoutTopBar(juce::Rectangle<int>& area)
 {
-    auto topRow = area.removeFromTop(45);
-    auto bottomRow = area;
+    // Standard-Abstand (Margin) für alle UI-Elemente: oben 0, rechts 5, unten 0, links 5
+    juce::FlexItem::Margin margin(0, 5, 0, 5);
 
-    const int rowY = 5;
-    const int btnHeight = 35;
-    const int sliderHeight = 30;
-    int xPos = 10;
+    // ==========================================
+    // 1. OBERE REIHE (Haupt-Controls)
+    // ==========================================
+    juce::FlexBox topFlexBox;
+    topFlexBox.flexDirection = juce::FlexBox::Direction::row;         // Elemente nebeneinander
+    topFlexBox.alignItems = juce::FlexBox::AlignItems::center;        // Vertikal zentrieren
+    topFlexBox.justifyContent = juce::FlexBox::JustifyContent::flexStart; // Links ausrichten
 
-    // Top Row - Haupt-Controls
-    playButton.setBounds(xPos, rowY, 70, btnHeight);
-    xPos += 75;
-    stopButton.setBounds(xPos, rowY, 70, btnHeight);
-    xPos += 75;
-    clearAllButton.setBounds(xPos, rowY, 80, btnHeight);
-    xPos += 85;
-    setFolderButton.setBounds(xPos, rowY, 160, btnHeight);
-    xPos += 165;
-    folderLabel.setBounds(xPos, rowY + 8, 150, 20);
-    xPos += 160;
-    bpmLabel.setBounds(xPos, rowY + 5, 35, 20);
-    xPos += 35;
-    bpmSlider.setBounds(xPos, rowY + 2, 140, sliderHeight);
-    xPos += 150;
-    masterVolumeLabel.setBounds(xPos, rowY + 5, 50, 20);
-    xPos += 50;
-    masterVolumeSlider.setBounds(xPos, rowY + 2, 120, sliderHeight);
-    xPos += 130;
-    audioSettingsButton.setBounds(xPos, rowY, 60, btnHeight);
+    // Elemente zur oberen Reihe hinzufügen
+    topFlexBox.items.add(juce::FlexItem(playButton).withWidth(70).withHeight(35).withMargin(margin));
+    topFlexBox.items.add(juce::FlexItem(stopButton).withWidth(70).withHeight(35).withMargin(margin));
+    topFlexBox.items.add(juce::FlexItem(clearAllButton).withWidth(80).withHeight(35).withMargin(margin));
+    topFlexBox.items.add(juce::FlexItem(setFolderButton).withWidth(160).withHeight(35).withMargin(margin));
+    topFlexBox.items.add(juce::FlexItem(folderLabel).withWidth(150).withHeight(20).withMargin(margin));
 
-    // Bottom Row - Generator Controls
-    xPos = 10;
-    const int bottomY = 50;
+    topFlexBox.items.add(juce::FlexItem(bpmLabel).withWidth(35).withHeight(20).withMargin(margin));
+    topFlexBox.items.add(juce::FlexItem(bpmSlider).withWidth(140).withHeight(30).withMargin(margin));
+    topFlexBox.items.add(juce::FlexItem(masterVolumeLabel).withWidth(50).withHeight(20).withMargin(margin));
+    topFlexBox.items.add(juce::FlexItem(masterVolumeSlider).withWidth(120).withHeight(30).withMargin(margin));
 
-    loopLengthLabel.setBounds(xPos, bottomY + 5, 35, 20);
-    xPos += 35;
-    loopLengthComboBox.setBounds(xPos, bottomY + 2, 100, sliderHeight);
-    xPos += 110;
-    genreComboBox.setBounds(xPos, bottomY + 2, 90, sliderHeight);
-    xPos += 95;
-    drumTargetLabel.setBounds(xPos, bottomY + 5, 40, 20);
-    xPos += 42;
-    drumTargetTrackCombo.setBounds(xPos, bottomY + 2, 100, sliderHeight);
-    xPos += 105;
-    generateButton.setBounds(xPos, bottomY, 100, btnHeight);
-    xPos += 110;
-    swingLabel.setBounds(xPos, bottomY + 5, 40, 20);
-    xPos += 40;
-    swingSlider.setBounds(xPos, bottomY + 2, 120, sliderHeight);
-    xPos += 130;
-    reverbLabel.setBounds(xPos, bottomY + 5, 45, 20);
-    xPos += 45;
-    reverbSlider.setBounds(xPos, bottomY + 2, 120, sliderHeight);
+    // Ein flexibler "Spacer" (Platzhalter), der den restlichen Platz einnimmt
+    // und den folgenden Audio-Button ganz nach rechts schiebt.
+    topFlexBox.items.add(juce::FlexItem().withFlex(1.0f));
+    topFlexBox.items.add(juce::FlexItem(wootingSettingsButton).withWidth(70).withHeight(35).withMargin(margin));
+    topFlexBox.items.add(juce::FlexItem(audioSettingsButton).withWidth(60).withHeight(35).withMargin(margin));
 
-    // Sidebar Toggle Buttons
-    xPos += 130;
-    if (xPos + 120 < area.getWidth())
-        rhythmExplorerButton.setBounds(xPos, bottomY, 120, btnHeight);
+    // ==========================================
+    // 2. UNTERE REIHE (Generator & Panels)
+    // ==========================================
+    juce::FlexBox bottomFlexBox;
+    bottomFlexBox.flexDirection = juce::FlexBox::Direction::row;
+    bottomFlexBox.alignItems = juce::FlexBox::AlignItems::center;
+    bottomFlexBox.justifyContent = juce::FlexBox::JustifyContent::flexStart;
 
-    xPos += 125;
-    if (xPos + 90 < area.getWidth())
-        melodyWorkstationButton.setBounds(xPos, bottomY, 90, btnHeight);
+    // Elemente zur unteren Reihe hinzufügen
+    bottomFlexBox.items.add(juce::FlexItem(loopLengthLabel).withWidth(35).withHeight(20).withMargin(margin));
+    bottomFlexBox.items.add(juce::FlexItem(loopLengthComboBox).withWidth(100).withHeight(30).withMargin(margin));
+    bottomFlexBox.items.add(juce::FlexItem(genreComboBox).withWidth(90).withHeight(30).withMargin(margin));
+    bottomFlexBox.items.add(juce::FlexItem(drumTargetLabel).withWidth(40).withHeight(20).withMargin(margin));
+    bottomFlexBox.items.add(juce::FlexItem(drumTargetTrackCombo).withWidth(100).withHeight(30).withMargin(margin));
+    bottomFlexBox.items.add(juce::FlexItem(generateButton).withWidth(100).withHeight(35).withMargin(margin));
 
-    xPos += 95;
-    if (xPos + 110 < area.getWidth())
-        wavetableSynthButton.setBounds(xPos, bottomY, 110, btnHeight);
+    bottomFlexBox.items.add(juce::FlexItem(swingLabel).withWidth(40).withHeight(20).withMargin(margin));
+    bottomFlexBox.items.add(juce::FlexItem(swingSlider).withWidth(120).withHeight(30).withMargin(margin));
+    bottomFlexBox.items.add(juce::FlexItem(reverbLabel).withWidth(45).withHeight(20).withMargin(margin));
+    bottomFlexBox.items.add(juce::FlexItem(reverbSlider).withWidth(120).withHeight(30).withMargin(margin));
 
-    xPos += 115;
-    if (xPos + 80 < area.getWidth())
-        timelineButton.setBounds(xPos, bottomY, 80, btnHeight);
+    // Wieder ein flexibler Spacer, um die Panel-Buttons nach rechts zu drücken
+    bottomFlexBox.items.add(juce::FlexItem().withFlex(1.0f));
+
+    bottomFlexBox.items.add(juce::FlexItem(rhythmExplorerButton).withWidth(120).withHeight(35).withMargin(margin));
+    bottomFlexBox.items.add(juce::FlexItem(melodyWorkstationButton).withWidth(90).withHeight(35).withMargin(margin));
+    bottomFlexBox.items.add(juce::FlexItem(wavetableSynthButton).withWidth(110).withHeight(35).withMargin(margin));
+    bottomFlexBox.items.add(juce::FlexItem(timelineButton).withWidth(80).withHeight(35).withMargin(margin));
+
+    // ==========================================
+    // 3. LAYOUT ANWENDEN
+    // ==========================================
+    // Wir teilen den Bereich für die TopBar exakt in eine obere und untere Hälfte auf
+    auto topRowArea = area.removeFromTop(area.getHeight() / 2);
+
+    // Die Flexboxen auf die errechneten Rechtecke anwenden (mit etwas innerem Abstand)
+    topFlexBox.performLayout(topRowArea.reduced(5, 5));
+    bottomFlexBox.performLayout(area.reduced(5, 5));
 }
 
 void MainComponent::timerCallback()
@@ -687,12 +706,23 @@ void MainComponent::timerCallback()
 
 void MainComponent::updatePlayhead()
 {
+    // Early exit if not playing and no state change needed
+    const bool isPlaying = audioEngine->isPlaying();
     const int steps = audioEngine->getSamplesPerStep();
 
     trackManager->forEachTrack([&](int i, TrackComponent& track) {
         const int trackLoopLen = track.getTrackLoopLength();
-        const int step = (steps > 0) ? (int)(audioEngine->getSamplePosition() / steps) % trackLoopLen : 0;
-        track.updatePlayhead(step, audioEngine->isPlaying());
+
+        // Safely calculate step (prevent division by zero)
+        int step = 0;
+        if (steps > 0 && trackLoopLen > 0) {
+            step = (int)(audioEngine->getSamplePosition() / steps) % trackLoopLen;
+        }
+
+        track.updatePlayhead(step, isPlaying);
+
+        // Update audio meter level (lock-free read from atomic)
+        track.updateLevel(audioEngine->getTrackLevel(i));
     });
 }
 

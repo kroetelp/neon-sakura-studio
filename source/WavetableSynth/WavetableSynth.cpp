@@ -178,3 +178,24 @@ float WavetableSynth::getMacroValue(int macroIndex) const
     if (macroIndex >= 0 && macroIndex < 4) return macroValues[macroIndex];
     return 0.0f;
 }
+
+void WavetableSynth::setPolyAftertouch(int midiNoteNumber, float pressure)
+{
+    // Find all voices playing this note and update their aftertouch
+    // Note: 'voices' is a protected member of juce::Synthesiser
+    for (auto* voice : voices)
+    {
+        if (auto* wavetableVoice = dynamic_cast<WavetableVoice*>(voice))
+        {
+            // Check if this voice is playing the target note and is active
+            if (wavetableVoice->getCurrentMidiNote() == midiNoteNumber &&
+                wavetableVoice->isVoiceActive())
+            {
+                wavetableVoice->setCurrentAftertouch(pressure);
+            }
+        }
+    }
+
+    // Also update global aftertouch for voices without specific note match
+    aftertouchValue = pressure;
+}
