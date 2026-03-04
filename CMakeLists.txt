@@ -40,16 +40,33 @@ add_library(melatonin_blur STATIC
 target_include_directories(melatonin_blur PUBLIC ${melatonin_blur_SOURCE_DIR})
 target_link_libraries(melatonin_blur PUBLIC juce::juce_graphics juce::juce_gui_basics)
 
-# Define the application
+# =========================================================
+# NEON SAKURA STUDIO - DAW APPLICATION
+# =========================================================
+# Neon Sakura Studio is a standalone DAW (Digital Audio Workstation)
+# that can:
+#   - Host external VST3/AU plugins via juce::AudioPluginFormatManager
+#   - Run internal native synthesizers (WavetableEngine)
+#   - Provide timeline-based audio editing and mixing
+# =========================================================
+
 juce_add_gui_app(NeonSakuraStudio
     INSTALL_EXPORTS NeonSakuraStudioTargets
     COMPANY_NAME "NeonSakura"
-    PRODUCT_NAME "NeonSakuraStudio"
+    PRODUCT_NAME "Neon Sakura Studio"
     VERSION ${PROJECT_VERSION}
+
+    # DAW needs comprehensive audio capabilities
+    NEEDS_MIDI_INPUT TRUE
+    NEEDS_MIDI_OUTPUT TRUE
 )
 
+# =========================================================
+# DAW CORE SOURCE FILES
+# =========================================================
 target_sources(NeonSakuraStudio
     PRIVATE
+    # Main Entry Point
     source/Main.cpp
     source/MainComponent.h
     source/MainComponent.cpp
@@ -58,7 +75,22 @@ target_sources(NeonSakuraStudio
     source/ITrackDataProvider.h
     source/ISampleProvider.h
 
-    # Managers and Controllers
+    # =====================================================
+    # THEME SYSTEM
+    # =====================================================
+    source/Theme/ThemeManager.h
+    source/Theme/ThemeManager.cpp
+    source/Theme/ProfessionalTheme.h
+    source/Theme/ProfessionalLookAndFeel.h
+    source/Theme/ProfessionalLookAndFeel.cpp
+    source/Theme/WorkspacePreset.h
+    source/Theme/WorkspacePreset.cpp
+    source/Theme/WorkspaceManager.h
+    source/Theme/WorkspaceManager.cpp
+
+    # =====================================================
+    # DAW ENGINE - Managers and Controllers
+    # =====================================================
     source/TrackManager.h
     source/TrackManager.cpp
     source/SampleManager.h
@@ -72,7 +104,11 @@ target_sources(NeonSakuraStudio
     source/DockingManager.h
     source/DockingManager.cpp
 
-    # Core Components
+    # =====================================================
+    # AUDIO ENGINE (Core DAW audio processing)
+    # =====================================================
+    source/AudioEngine.h
+    source/AudioEngine.cpp
     source/TrackModel.h
     source/TrackModel.cpp
     source/TrackType.h
@@ -80,18 +116,61 @@ target_sources(NeonSakuraStudio
     source/TrackAudioProcessor.cpp
     source/TrackComponent.h
     source/TrackComponent.cpp
-    source/PatternGenerator.h
-    source/PatternGenerator.cpp
-    source/AudioEngine.h
-    source/AudioEngine.cpp
-    source/RhythmExplorer.h
-    source/RhythmExplorer.cpp
-    source/MusicTheory.h
-    source/MusicTheory.cpp
-    source/MelodyGenerator.h
-    source/MelodyGenerator.cpp
-    source/MelodyPanel.h
-    source/MelodyPanel.cpp
+
+    # =====================================================
+    # AUDIO ROUTING (AudioProcessorGraph-based signal flow)
+    # =====================================================
+    source/AudioRouting/IAudioSource.h
+    source/AudioRouting/AudioRoutingGraph.h
+    source/AudioRouting/AudioRoutingGraph.cpp
+    source/AudioRouting/TrackProcessor.h
+    source/AudioRouting/TrackProcessor.cpp
+    source/AudioRouting/MasterOutputProcessor.h
+    source/AudioRouting/MasterOutputProcessor.cpp
+    source/AudioRouting/SidechainManager.h
+    source/AudioRouting/SidechainManager.cpp
+    source/AudioRouting/MIDIOutputHandler.h
+    source/AudioRouting/MIDIOutputHandler.cpp
+    source/AudioRouting/PluginParameterAutomation.h
+    source/AudioRouting/PluginParameterAutomation.cpp
+    source/AudioRouting/CPUProfiler.h
+    source/AudioRouting/CPUProfiler.cpp
+
+    # =====================================================
+    # INTERNAL SYNTH (Native Wavetable Synthesizer)
+    # =====================================================
+    source/InternalSynth/InternalSynthProcessor.h
+    source/InternalSynth/InternalSynthProcessor.cpp
+    source/InternalSynth/InternalSynthEditor.h
+    source/InternalSynth/InternalSynthEditor.cpp
+
+    # =====================================================
+    # VST HOSTING (External Plugin Support)
+    # =====================================================
+    source/VSTHost/PluginHostConfiguration.h
+    source/VSTHost/VSTPluginManager.h
+    source/VSTHost/VSTPluginManager.cpp
+    source/VSTHost/PluginScanner.h
+    source/VSTHost/PluginScanner.cpp
+    source/VSTHost/PluginInstance.h
+    source/VSTHost/PluginInstance.cpp
+    source/VSTHost/PluginWindow.h
+    source/VSTHost/PluginWindow.cpp
+    source/VSTHost/PluginBrowserComponent.h
+    source/VSTHost/PluginBrowserComponent.cpp
+    source/VSTHost/PluginLoadingCoordinator.h
+    source/VSTHost/PluginLoadingCoordinator.cpp
+    # source/VSTHost/PluginSandbox.h  # TODO: Phase 6.2 - Disabled due to platform-specific issues
+    # source/VSTHost/PluginSandbox.cpp  # TODO: Phase 6.2 - Disabled due to platform-specific issues
+
+    # =====================================================
+    # INTERNAL SYNTH - Native Wavetable Synthesizer
+    # (Formerly PluginProcessor - now internal module)
+    # =====================================================
+    source/InternalSynth/InternalSynthProcessor.h
+    source/InternalSynth/InternalSynthProcessor.cpp
+    source/InternalSynth/InternalSynthEditor.h
+    source/InternalSynth/InternalSynthEditor.cpp
 
     # Wavetable Synth Core
     source/WavetableSynth/WavetableData.h
@@ -127,7 +206,22 @@ target_sources(NeonSakuraStudio
     source/Modulation/ModulationMatrix.h
     source/Modulation/ModulationMatrix.cpp
 
-    # Wavetable UI
+    # =====================================================
+    # VST HOSTING - External Plugin Support
+    # (For loading third-party VST3/AU plugins)
+    # =====================================================
+    source/VSTHost/PluginHostConfiguration.h
+    source/VSTHost/VSTPluginManager.h
+    source/VSTHost/VSTPluginManager.cpp
+    source/VSTHost/PluginScanner.h
+    source/VSTHost/PluginScanner.cpp
+    source/VSTHost/PluginInstance.h
+    source/VSTHost/PluginInstance.cpp
+
+    # =====================================================
+    # UI COMPONENTS
+    # =====================================================
+    # Synth UI
     source/WavetableUI/NeonSakuraLookAndFeel.h
     source/WavetableUI/NeonSakuraLookAndFeel.cpp
     source/WavetableUI/WavetableSynthEditor.h
@@ -155,50 +249,150 @@ target_sources(NeonSakuraStudio
     source/WavetableUI/WootingSettingsPanel.h
     source/WavetableUI/WootingSettingsPanel.cpp
 
-    # Timeline
+    # Timeline UI
     source/Timeline/TimelineClip.h
     source/Timeline/TimelineClip.cpp
     source/Timeline/TimelineTrack.h
     source/Timeline/TimelineData.h
     source/Timeline/TimelineData.cpp
+    source/Timeline/TimelineTransport.h
+    source/Timeline/TimelineTransport.cpp
+    source/Timeline/TimelinePlayHead.h
+    source/Timeline/TimelinePlayHead.cpp
+    source/Timeline/TimelineRenderer.h
+    source/Timeline/TimelineRenderer.cpp
     source/Timeline/RecordingManager.h
     source/Timeline/RecordingManager.cpp
     source/Timeline/PatternToClipConverter.h
     source/Timeline/PatternToClipConverter.cpp
     source/Timeline/TimelineComponent.h
     source/Timeline/TimelineComponent.cpp
-    source/Timeline/TimelineTransport.h
-    source/Timeline/TimelineTransport.cpp
-    source/Timeline/TimelineRenderer.h
-    source/Timeline/TimelineRenderer.cpp
     source/Timeline/TimelinePanel.h
     source/Timeline/TimelinePanel.cpp
+    source/Timeline/AutomationClip.h
+    source/Timeline/AutomationClip.cpp
+    source/Timeline/AutomationLane.h
+    source/Timeline/AutomationLane.cpp
+    source/Timeline/TimelineViewport.h
+    source/Timeline/TimelineViewport.cpp
 
     # Step Sequencer
     source/StepSequencer/NeonStepButton.h
     source/StepSequencer/NeonStepButton.cpp
     source/StepSequencer/StepSequencerPanel.h
     source/StepSequencer/StepSequencerPanel.cpp
+    source/StepSequencer/StepSequencerClip.h
+    source/StepSequencer/StepSequencerClip.cpp
+
+    # Unified Sequencer (Multi-Mode Sequencer)
+    source/Sequencer/UnifiedSequencerModel.h
+    source/Sequencer/UnifiedSequencerModel.cpp
+    source/Sequencer/UnifiedSequencerPanel.h
+    source/Sequencer/UnifiedSequencerPanel.cpp
+    source/Sequencer/TrackViewComponent.h
+    source/Sequencer/TrackViewComponent.cpp
+    source/Sequencer/PatternViewComponent.h
+    source/Sequencer/PatternViewComponent.cpp
+    source/Sequencer/TimelineViewComponent.h
+    source/Sequencer/TimelineViewComponent.cpp
+
+    # =====================================================
+    # TOP BAR COMPONENTS (New Modular Design)
+    # =====================================================
+    source/UI/TransportBar.h
+    source/UI/TransportBar.cpp
+    source/UI/GlobalControlsBar.h
+    source/UI/GlobalControlsBar.cpp
+    source/UI/TrackToolsBar.h
+    source/UI/TrackToolsBar.cpp
+    source/UI/PanelTogglesBar.h
+    source/UI/PanelTogglesBar.cpp
+    source/UI/SidechainRoutingPanel.h
+    source/UI/SidechainRoutingPanel.cpp
+    source/UI/TrackHeader.h
+    source/UI/TrackHeader.cpp
+    source/UI/PluginChainEditor.h
+    source/UI/PluginChainEditor.cpp
+
+    # Music Generation
+    source/PatternGenerator.h
+    source/PatternGenerator.cpp
+    source/RhythmExplorer/RhythmExplorer.h
+    source/RhythmExplorer/RhythmExplorer.cpp
+    source/RhythmExplorer/RhythmExplorerPanel.h
+    source/RhythmExplorer/RhythmExplorerPanel.cpp
+    source/MusicTheory.h
+    source/MusicTheory.cpp
+    source/MelodyGenerator.h
+    source/MelodyGenerator.cpp
+    source/MelodyPanel/MelodyPanel.h
+    source/MelodyPanel/MelodyPanel.cpp
+    source/MelodyPanel/MelodyPanelPanel.h
+    source/MelodyPanel/MelodyPanelPanel.cpp
+
+    # MIDI Event Queue
+    source/MidiEventQueue.h
 )
 
-# Link JUCE modules and melatonin_blur
+# =========================================================
+# LINK JUCE MODULES
+# =========================================================
+# Note: juce_audio_processors is required for VST HOSTING
+# (AudioPluginFormatManager, AudioProcessorGraph)
+# =========================================================
 target_link_libraries(NeonSakuraStudio
     PRIVATE
+    # Core JUCE
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_events
+
+    # Audio
     juce::juce_audio_basics
     juce::juce_audio_devices
     juce::juce_audio_formats
-    juce::juce_audio_processors
+    juce::juce_audio_processors   # Required for VST hosting!
     juce::juce_audio_utils
-    juce::juce_core
-    juce::juce_data_structures
     juce::juce_dsp
-    juce::juce_events
+
+    # Note: LV2 Plugin Support is included in juce::juce_audio_processors (JUCE 8.0.4)
+    # No separate juce::juce_lv2 module needed for hosting
+
+    # Graphics/UI
     juce::juce_graphics
     juce::juce_gui_basics
     juce::juce_gui_extra
+    juce::juce_opengl     # GPU acceleration
+
+    # External
     melatonin_blur
 )
 
+# =========================================================
+# ENABLE VST3 PLUGIN HOSTING
+# =========================================================
+# JUCE 8.0.4 requires explicit activation of plugin hosting features
+# Without these flags, addDefaultFormats() won't add VST3 support
+# =========================================================
+if(WIN32)
+    # Windows: Enable VST3 hosting (required for Serum2.vst3)
+    target_compile_definitions(NeonSakuraStudio PRIVATE JUCE_PLUGINHOST_VST3=1)
+    message(STATUS "VST3 Hosting: ENABLED for Windows")
+elseif(APPLE)
+    # macOS: Enable VST3 and AU hosting
+    target_compile_definitions(NeonSakuraStudio PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_PLUGINHOST_AU=1)
+    message(STATUS "VST3 Hosting: ENABLED for macOS")
+    message(STATUS "AU Hosting: ENABLED for macOS")
+elseif(UNIX AND NOT APPLE)
+    # Linux: Enable VST3 and LV2 hosting
+    target_compile_definitions(NeonSakuraStudio PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_PLUGINHOST_LV2=1)
+    message(STATUS "VST3 Hosting: ENABLED for Linux")
+    message(STATUS "LV2 Hosting: ENABLED for Linux")
+endif()
+
+# =========================================================
+# COMPILER OPTIMIZATIONS (Windows)
+# =========================================================
 if(JUCE_WINDOWS)
     target_link_libraries(NeonSakuraStudio PRIVATE juce::juce_recommended_config_flags)
     target_link_libraries(NeonSakuraStudio PRIVATE juce::juce_recommended_lto_flags)
@@ -208,14 +402,12 @@ endif()
 # WOOTING ANALOG SDK INTEGRATION (Windows only)
 # =========================================================
 if(WIN32)
-    # Check if Wooting SDK exists before linking
     set(WOOTING_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/wooting/include")
     set(WOOTING_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/wooting/lib")
 
     if(EXISTS "${WOOTING_INCLUDE_DIR}" AND EXISTS "${WOOTING_LIB_DIR}")
         target_include_directories(NeonSakuraStudio PRIVATE "${WOOTING_INCLUDE_DIR}")
 
-        # Find the correct library file (could be .lib or .dll.lib)
         find_library(WOOTING_LIB
             NAMES wooting_analog_sdk wooting_analog_sdk.dll
             PATHS "${WOOTING_LIB_DIR}"

@@ -99,6 +99,16 @@ void TrackManager::processAudioBlock(int trackIndex, juce::AudioBuffer<float>& b
     }
 }
 
+double TrackManager::getPlayheadBeat() const
+{
+    return playheadBeat.load();
+}
+
+void TrackManager::setPlayheadBeat(double beat)
+{
+    playheadBeat.store(beat);
+}
+
 // Track array access
 TrackComponent& TrackManager::getTrack(int index)
 {

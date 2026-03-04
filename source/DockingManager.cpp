@@ -4,6 +4,7 @@
 
 #include "DockingManager.h"
 #include "MainComponent.h"  // Für triggerLayoutUpdate
+#include "Theme/ThemeManager.h"
 
 // ============================================================================
 // FloatingWindowContainer Implementation
@@ -13,12 +14,14 @@ FloatingWindowContainer::FloatingWindowContainer(const juce::String& windowTitle
                                                  DockablePanel* panelToContain,
                                                  bool shouldReDockOnClose)
     : juce::DocumentWindow(windowTitle,
-                            juce::Colour(15, 15, 25),  // Background color
+                            ThemeManager::getInstance().getBackgroundColor(),
                             juce::DocumentWindow::allButtons,
                             true)
     , panel(panelToContain)
     , reDockOnClose(shouldReDockOnClose)
 {
+    auto& theme = ThemeManager::getInstance();
+
     jassert(panel != nullptr);  // Panel darf nicht null sein!
 
     // Window-Eigenschaften
@@ -34,8 +37,8 @@ FloatingWindowContainer::FloatingWindowContainer(const juce::String& windowTitle
                                 panel->getPreferredFloatingBounds().getHeight());
     }
 
-    // Neon Sakura Styling
-    setColour(juce::DocumentWindow::textColourId, juce::Colour(200, 200, 220));
+    // Theme Styling
+    setColour(juce::DocumentWindow::textColourId, theme.getTextSecondaryColor());
 }
 
 FloatingWindowContainer::~FloatingWindowContainer()

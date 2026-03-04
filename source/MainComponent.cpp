@@ -10,12 +10,25 @@
 #include "StepSequencer/StepSequencerPanel.h"
 #include "AudioEngine.h"
 #include "PatternGenerator.h"
-#include "RhythmExplorer.h"
-#include "MelodyPanel.h"
+#include "RhythmExplorer/RhythmExplorer.h"
+#include "RhythmExplorer/RhythmExplorerPanel.h"
+#include "MelodyPanel/MelodyPanel.h"
+#include "MelodyPanel/MelodyPanelPanel.h"
 #include "TrackComponent.h"
 #include "WavetableSynth/WavetableData.h"
 #include "WavetableSynth/WavetableEngine.h"
 #include "Timeline/TimelineComponent.h"
+#include "Theme/WorkspaceManager.h"
+
+// VST Hosting
+#include "VSTHost/VSTPluginManager.h"
+#include "VSTHost/PluginWindow.h"
+#include "VSTHost/PluginBrowserComponent.h"
+#include "VSTHost/PluginInstance.h"
+#include "VSTHost/PluginLoadingCoordinator.h"
+
+// Audio Routing
+#include "AudioRouting/CPUProfiler.h"
 
 MainComponent::MainComponent()
 {
@@ -26,8 +39,38 @@ MainComponent::MainComponent()
     initializeUI();
     initializeDockingPanels();  // NEU: Panels registrieren und layouten
     connectTrackCallbacks();
-    connectPanelCallbacks();
     connectUICallbacks();
+
+    // Initialize WorkspaceManager and connect
+    auto& workspaceManager = WorkspaceManager::getInstance();
+    workspaceManager.setMainComponent(this);
+    workspaceManager.setAudioRoutingGraph(audioEngine->getAudioRoutingGraph());
+    workspaceManager.onPresetLoaded = [this](const WorkspacePreset& preset) {
+        // Update UI when preset is loaded
+        if (trackToolsBar && trackToolsBar->getWorkspacePresetCombo())
+        {
+            auto* combo = trackToolsBar->getWorkspacePresetCombo();
+            for (int i = 0; i < combo->getNumItems(); ++i)
+            {
+                if (combo->getItemText(i) == preset.name)
+                {
+                    combo->setSelectedId(i + 1, juce::dontSendNotification);
+                    break;
+                }
+            }
+        }
+    };
+
+    // Populate workspace combo
+    if (trackToolsBar && trackToolsBar->getWorkspacePresetCombo())
+    {
+        auto* combo = trackToolsBar->getWorkspacePresetCombo();
+        combo->clear();
+        auto names = workspaceManager.getPresetNames();
+        for (int i = 0; i < names.size(); ++i)
+            combo->addItem(names[i], i + 1);
+        combo->setSelectedId(1);
+    }
 
     juce::File detectedDir = sampleManager->autoDetectSampleDirectory();
     if (detectedDir.exists())
@@ -75,6 +118,9 @@ void MainComponent::initializeManagers()
 
     wootingManager = std::make_unique<WootingManager>();
     audioEngine->getWavetableEngine().setMidiEventQueue(&wootingManager->getMidiQueue());
+
+    // === VST Plugin Hosting initialisieren ===
+    initializeVSTHosting();
 }
 
 void MainComponent::initializeDockingPanels()
@@ -95,6 +141,59 @@ void MainComponent::initializeDockingPanels()
     auto stepSequencerPanel = std::make_unique<StepSequencerPanel>();
     stepSequencerPanel->setTrackManager(trackManager.get());
     dockingManager->registerPanel(std::move(stepSequencerPanel));
+
+    // === RhythmExplorerPanel erstellen und registrieren ===
+    auto rhythmExplorerPanel = std::make_unique<RhythmExplorerPanel>();
+    rhythmExplorerPanel->setTargetTrack(selectedTrackForRhythm);
+    rhythmExplorerPanel->onApplyPattern = [this](int trackIndex, const std::vector<int>& steps, bool clearFirst) {
+        if (trackIndex >= 0 && trackIndex < numTracks)
+        {
+            if (clearFirst)
+                trackManager->getTrack(trackIndex).clearAllSteps();
+
+            for (int step : steps)
+            {
+                trackManager->getTrack(trackIndex).setStepActive(step, true);
+            }
+        }
+    };
+    rhythmExplorerPanel->onApplyFill = [this](int trackIndex, const std::vector<int>& steps) {
+        if (trackIndex >= 0 && trackIndex < numTracks)
+        {
+            for (int step : steps)
+            {
+                if (step >= 0 && step < 64)
+                    trackManager->getTrack(trackIndex).setStepActive(step, true);
+            }
+        }
+    };
+    dockingManager->registerPanel(std::move(rhythmExplorerPanel));
+
+    // === MelodyPanelPanel erstellen und registrieren ===
+    auto melodyPanelPanel = std::make_unique<MelodyPanelPanel>();
+    melodyPanelPanel->setTargetTrack(selectedTrackForRhythm);
+    melodyPanelPanel->onApplyMelody = [this](int trackIndex, const std::vector<std::pair<int, int>>& stepPitches) {
+        if (trackIndex >= 0 && trackIndex < numTracks)
+        {
+            trackManager->getTrack(trackIndex).clearAllSteps();
+
+            for (const auto& [step, pitchOffset] : stepPitches)
+            {
+                if (step >= 0 && step < 64)
+                {
+                    StepModifierState state;
+                    state.active = true;
+                    state.hasPitchLock = (pitchOffset != 0);
+                    state.pitchLock = pitchOffset;
+                    trackManager->getTrack(trackIndex).setStepState(step, state);
+                }
+            }
+        }
+    };
+    dockingManager->registerPanel(std::move(melodyPanelPanel));
+
+    // === PanelTogglesBar mit DockingManager verbinden ===
+    panelTogglesBar->setDockingManager(dockingManager.get());
 
     // === Stretchable Resizer Bar erstellen ===
     verticalResizerBar = std::make_unique<juce::StretchableLayoutResizerBar>(
@@ -128,18 +227,20 @@ void MainComponent::initializeDockingPanels()
 
 void MainComponent::initializeBottomTabs()
 {
-    // Tab-Component erstellen mit Neon Sakura Styling
+    auto& theme = ThemeManager::getInstance();
+
+    // Tab-Component erstellen mit ThemeManager Styling
     bottomTabs = std::make_unique<juce::TabbedComponent>(juce::TabbedButtonBar::TabsAtTop);
 
     // Tab-Bar Styling
     bottomTabs->setTabBarDepth(tabBarHeight);
-    bottomTabs->setColour(juce::TabbedComponent::backgroundColourId, getDarkBackground());
-    bottomTabs->setColour(juce::TabbedComponent::outlineColourId, juce::Colour(40, 40, 60));
+    bottomTabs->setColour(juce::TabbedComponent::backgroundColourId, theme.getBackgroundColor());
+    bottomTabs->setColour(juce::TabbedComponent::outlineColourId, theme.getPanelBorderColor());
 
     // Tab-Buttons Styling
     auto& tabBar = bottomTabs->getTabbedButtonBar();
-    tabBar.setColour(juce::TabbedButtonBar::tabOutlineColourId, juce::Colour(40, 40, 60));
-    tabBar.setColour(juce::TabbedButtonBar::frontOutlineColourId, getNeonCyan());
+    tabBar.setColour(juce::TabbedButtonBar::tabOutlineColourId, theme.getPanelBorderColor());
+    tabBar.setColour(juce::TabbedButtonBar::frontOutlineColourId, theme.getAccentColor());
 
     // Timeline Tab hinzufügen
     auto* timelinePanel = dockingManager->getPanelAs<TimelinePanel>(PanelType::Timeline);
@@ -148,14 +249,14 @@ void MainComponent::initializeBottomTabs()
         // ACHTUNG: Wir fügen das Panel NICHT als Ownership hinzu,
         // sondern zeigen nur seinen Content an.
         // Das Panel bleibt im Besitz des DockingManagers.
-        bottomTabs->addTab("Timeline", getNeonCyan(), timelinePanel, false);
+        bottomTabs->addTab("Timeline", theme.getInfoColor(), timelinePanel, false);
     }
 
     // Step Sequencer Tab hinzufügen
     auto* stepSequencerPanel = dockingManager->getPanelAs<StepSequencerPanel>(PanelType::StepSequencer);
     if (stepSequencerPanel)
     {
-        bottomTabs->addTab("Step Sequencer", getNeonPink(), stepSequencerPanel, false);
+        bottomTabs->addTab("Step Sequencer", theme.getAccentColor(), stepSequencerPanel, false);
     }
 
     // Standardmäßig Timeline Tab anzeigen
@@ -166,50 +267,96 @@ void MainComponent::initializeBottomTabs()
 
 void MainComponent::initializeUI()
 {
+    auto& theme = ThemeManager::getInstance();
+
+    // === NEW MODULAR TOP BAR COMPONENTS ===
+    transportBar = std::make_unique<TransportBar>();
+    transportBar->onPlay = [this]() { togglePlay(); };
+    transportBar->onStop = [this]() { stopPlayback(); };
+    addAndMakeVisible(transportBar.get());
+
+    globalControlsBar = std::make_unique<GlobalControlsBar>();
+    globalControlsBar->onBpmChanged = [this](double bpm) {
+        audioEngine->setBPM(bpm);
+    };
+    globalControlsBar->onMasterVolumeChanged = [this](float volume) {
+        audioEngine->setMasterVolume(volume);
+    };
+    globalControlsBar->onFolderButtonClicked = [this]() {
+        openFolderChooser();
+    };
+    addAndMakeVisible(globalControlsBar.get());
+
+    trackToolsBar = std::make_unique<TrackToolsBar>();
+    trackToolsBar->onLoopLengthChanged = [this](int length) {
+        playbackController->setLoopLength(length);
+    };
+    trackToolsBar->onGenerateClicked = [this]() {
+        int targetTrack = trackToolsBar->getTargetTrackCombo()->getSelectedId();
+        int genreId = trackToolsBar->getGenreCombo()->getSelectedId();
+        // Convert combo ID to Genre enum
+        PatternGenerator::Genre genre = static_cast<PatternGenerator::Genre>(genreId - 1);
+        if (targetTrack == 0)
+            patternGenerator->generateSong(genre);
+        else
+            patternGenerator->generateSongForTrack(genre, targetTrack - 1);
+    };
+    trackToolsBar->onWorkspacePresetChanged = [this](const juce::String& presetName) {
+        WorkspaceManager::getInstance().loadPreset(presetName);
+    };
+    addAndMakeVisible(trackToolsBar.get());
+
+    panelTogglesBar = std::make_unique<PanelTogglesBar>();
+    panelTogglesBar->onPluginBrowserToggled = [this](bool show) {
+        togglePluginBrowser();
+    };
+    addAndMakeVisible(panelTogglesBar.get());
+
+    // === LEGACY CONTROLS (kept for compatibility) ===
     playButton.setButtonText("Play");
-    playButton.setColour(juce::TextButton::buttonColourId, getNeonPink());
-    playButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    playButton.setColour(juce::TextButton::buttonColourId, theme.getAccentColor());
+    playButton.setColour(juce::TextButton::textColourOffId, theme.getTextPrimaryColor());
     addAndMakeVisible(playButton);
 
     stopButton.setButtonText("Stop");
-    stopButton.setColour(juce::TextButton::buttonColourId, getNeonCyan());
-    stopButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    stopButton.setColour(juce::TextButton::buttonColourId, theme.getAccentColor());
+    stopButton.setColour(juce::TextButton::textColourOffId, theme.getTextPrimaryColor());
     addAndMakeVisible(stopButton);
 
     setFolderButton.setButtonText("Set SuperDirt Folder");
-    setFolderButton.setColour(juce::TextButton::buttonColourId, juce::Colour(50, 50, 70));
-    setFolderButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    setFolderButton.setColour(juce::TextButton::buttonColourId, theme.getButtonColor());
+    setFolderButton.setColour(juce::TextButton::textColourOffId, theme.getTextPrimaryColor());
     addAndMakeVisible(setFolderButton);
 
     folderLabel.setText("No folder selected", juce::dontSendNotification);
-    folderLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+    folderLabel.setColour(juce::Label::textColourId, theme.getTextSecondaryColor());
     addAndMakeVisible(folderLabel);
 
     clearAllButton.setButtonText("Clear All");
-    clearAllButton.setColour(juce::TextButton::buttonColourId, juce::Colour(80, 30, 30));
-    clearAllButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    clearAllButton.setColour(juce::TextButton::buttonColourId, theme.getErrorColor().darker(0.3f));
+    clearAllButton.setColour(juce::TextButton::textColourOffId, theme.getTextPrimaryColor());
     addAndMakeVisible(clearAllButton);
 
     audioSettingsButton.setButtonText("Audio");
-    audioSettingsButton.setColour(juce::TextButton::buttonColourId, getDarkBackground());
-    audioSettingsButton.setColour(juce::TextButton::textColourOffId, getNeonCyan());
+    audioSettingsButton.setColour(juce::TextButton::buttonColourId, theme.getButtonColor());
+    audioSettingsButton.setColour(juce::TextButton::textColourOffId, theme.getAccentColor());
     addAndMakeVisible(audioSettingsButton);
 
     wootingSettingsButton.setButtonText("Wooting");
-    wootingSettingsButton.setColour(juce::TextButton::buttonColourId, getDarkBackground());
-    wootingSettingsButton.setColour(juce::TextButton::textColourOffId, getNeonGreen());
+    wootingSettingsButton.setColour(juce::TextButton::buttonColourId, theme.getButtonColor());
+    wootingSettingsButton.setColour(juce::TextButton::textColourOffId, theme.getSuccessColor());
     addAndMakeVisible(wootingSettingsButton);
 
     bpmSlider.setRange(60.0, 200.0, 1.0);
     bpmSlider.setValue(120.0);
     bpmSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     bpmSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 80, 36);
-    bpmSlider.setColour(juce::Slider::thumbColourId, getNeonPink());
-    bpmSlider.setColour(juce::Slider::trackColourId, juce::Colours::darkgrey);
+    bpmSlider.setColour(juce::Slider::thumbColourId, theme.getSliderThumbColor());
+    bpmSlider.setColour(juce::Slider::trackColourId, theme.getSliderTrackColor());
     addAndMakeVisible(bpmSlider);
 
     bpmLabel.setText("BPM", juce::dontSendNotification);
-    bpmLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    bpmLabel.setColour(juce::Label::textColourId, theme.getTextPrimaryColor());
     addAndMakeVisible(bpmLabel);
     bpmLabel.attachToComponent(&bpmSlider, true);
 
@@ -217,12 +364,12 @@ void MainComponent::initializeUI()
     masterVolumeSlider.setValue(0.8);
     masterVolumeSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     masterVolumeSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 80, 36);
-    masterVolumeSlider.setColour(juce::Slider::thumbColourId, getNeonCyan());
-    masterVolumeSlider.setColour(juce::Slider::trackColourId, juce::Colours::darkgrey);
+    masterVolumeSlider.setColour(juce::Slider::thumbColourId, theme.getSliderThumbColor());
+    masterVolumeSlider.setColour(juce::Slider::trackColourId, theme.getSliderTrackColor());
     addAndMakeVisible(masterVolumeSlider);
 
     masterVolumeLabel.setText("Master", juce::dontSendNotification);
-    masterVolumeLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    masterVolumeLabel.setColour(juce::Label::textColourId, theme.getTextPrimaryColor());
     addAndMakeVisible(masterVolumeLabel);
     masterVolumeLabel.attachToComponent(&masterVolumeSlider, true);
 
@@ -231,13 +378,13 @@ void MainComponent::initializeUI()
     loopLengthComboBox.addItem("48 Steps", 48);
     loopLengthComboBox.addItem("64 Steps", 64);
     loopLengthComboBox.setSelectedId(16);
-    loopLengthComboBox.setColour(juce::ComboBox::backgroundColourId, getDarkBackground());
-    loopLengthComboBox.setColour(juce::ComboBox::textColourId, juce::Colours::white);
-    loopLengthComboBox.setColour(juce::ComboBox::arrowColourId, getNeonCyan());
+    loopLengthComboBox.setColour(juce::ComboBox::backgroundColourId, theme.getButtonColor());
+    loopLengthComboBox.setColour(juce::ComboBox::textColourId, theme.getTextPrimaryColor());
+    loopLengthComboBox.setColour(juce::ComboBox::outlineColourId, theme.getPanelBorderColor());
     addAndMakeVisible(loopLengthComboBox);
 
     loopLengthLabel.setText("Loop", juce::dontSendNotification);
-    loopLengthLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    loopLengthLabel.setColour(juce::Label::textColourId, theme.getTextPrimaryColor());
     addAndMakeVisible(loopLengthLabel);
 
     genreComboBox.addItem("Techno", 1);
@@ -247,39 +394,39 @@ void MainComponent::initializeUI()
     genreComboBox.addItem("Ambient", 5);
     genreComboBox.addItem("Garage", 6);
     genreComboBox.setSelectedId(1);
-    genreComboBox.setColour(juce::ComboBox::backgroundColourId, getDarkBackground());
-    genreComboBox.setColour(juce::ComboBox::textColourId, juce::Colours::white);
-    genreComboBox.setColour(juce::ComboBox::arrowColourId, getNeonPink());
+    genreComboBox.setColour(juce::ComboBox::backgroundColourId, theme.getButtonColor());
+    genreComboBox.setColour(juce::ComboBox::textColourId, theme.getTextPrimaryColor());
+    genreComboBox.setColour(juce::ComboBox::outlineColourId, theme.getPanelBorderColor());
     addAndMakeVisible(genreComboBox);
 
     drumTargetLabel.setText("Track:", juce::dontSendNotification);
-    drumTargetLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    drumTargetLabel.setColour(juce::Label::textColourId, theme.getTextPrimaryColor());
     addAndMakeVisible(drumTargetLabel);
 
     drumTargetTrackCombo.addItem("All Tracks", 0);
     for (int i = 0; i < numTracks; ++i)
         drumTargetTrackCombo.addItem("Track " + juce::String(i + 1), i + 1);
     drumTargetTrackCombo.setSelectedId(0);
-    drumTargetTrackCombo.setColour(juce::ComboBox::backgroundColourId, getDarkBackground());
-    drumTargetTrackCombo.setColour(juce::ComboBox::textColourId, juce::Colours::white);
-    drumTargetTrackCombo.setColour(juce::ComboBox::outlineColourId, getNeonCyan());
+    drumTargetTrackCombo.setColour(juce::ComboBox::backgroundColourId, theme.getButtonColor());
+    drumTargetTrackCombo.setColour(juce::ComboBox::textColourId, theme.getTextPrimaryColor());
+    drumTargetTrackCombo.setColour(juce::ComboBox::outlineColourId, theme.getPanelBorderColor());
     addAndMakeVisible(drumTargetTrackCombo);
 
     generateButton.setButtonText("Generate");
-    generateButton.setColour(juce::TextButton::buttonColourId, getNeonPink());
-    generateButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    generateButton.setColour(juce::TextButton::buttonColourId, theme.getAccentColor());
+    generateButton.setColour(juce::TextButton::textColourOffId, theme.getTextPrimaryColor());
     addAndMakeVisible(generateButton);
 
     swingSlider.setRange(0.0, 0.75, 0.01);
     swingSlider.setValue(0.0);
     swingSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     swingSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 70, 28);
-    swingSlider.setColour(juce::Slider::thumbColourId, getNeonCyan());
-    swingSlider.setColour(juce::Slider::trackColourId, juce::Colours::darkgrey);
+    swingSlider.setColour(juce::Slider::thumbColourId, theme.getSliderThumbColor());
+    swingSlider.setColour(juce::Slider::trackColourId, theme.getSliderTrackColor());
     addAndMakeVisible(swingSlider);
 
     swingLabel.setText("Swing", juce::dontSendNotification);
-    swingLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    swingLabel.setColour(juce::Label::textColourId, theme.getTextPrimaryColor());
     addAndMakeVisible(swingLabel);
     swingLabel.attachToComponent(&swingSlider, true);
 
@@ -287,41 +434,49 @@ void MainComponent::initializeUI()
     reverbSlider.setValue(0.3);
     reverbSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     reverbSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 70, 28);
-    reverbSlider.setColour(juce::Slider::thumbColourId, getNeonPink());
-    reverbSlider.setColour(juce::Slider::trackColourId, juce::Colours::darkgrey);
+    reverbSlider.setColour(juce::Slider::thumbColourId, theme.getSliderThumbColor());
+    reverbSlider.setColour(juce::Slider::trackColourId, theme.getSliderTrackColor());
     addAndMakeVisible(reverbSlider);
 
     reverbLabel.setText("Reverb", juce::dontSendNotification);
-    reverbLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    reverbLabel.setColour(juce::Label::textColourId, theme.getTextPrimaryColor());
     addAndMakeVisible(reverbLabel);
     reverbLabel.attachToComponent(&reverbSlider, true);
 
     rhythmExplorerButton.setButtonText("Rhythm Explorer");
-    rhythmExplorerButton.setColour(juce::TextButton::buttonColourId, getNeonPink().withAlpha(0.7f));
-    rhythmExplorerButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    rhythmExplorerButton.setColour(juce::TextButton::buttonColourId, theme.getAccentColor().withAlpha(0.7f));
+    rhythmExplorerButton.setColour(juce::TextButton::textColourOffId, theme.getTextPrimaryColor());
     rhythmExplorerButton.setClickingTogglesState(true);
     addAndMakeVisible(rhythmExplorerButton);
 
     melodyWorkstationButton.setButtonText("Melody WS");
-    melodyWorkstationButton.setColour(juce::TextButton::buttonColourId, getNeonPink().withAlpha(0.7f));
-    melodyWorkstationButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    melodyWorkstationButton.setColour(juce::TextButton::buttonColourId, theme.getAccentColor().withAlpha(0.7f));
+    melodyWorkstationButton.setColour(juce::TextButton::textColourOffId, theme.getTextPrimaryColor());
     melodyWorkstationButton.setClickingTogglesState(true);
     addAndMakeVisible(melodyWorkstationButton);
 
     wavetableSynthButton.setButtonText("Wavetable Synth");
-    wavetableSynthButton.setColour(juce::TextButton::buttonColourId, getNeonPurple());
-    wavetableSynthButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    wavetableSynthButton.setColour(juce::TextButton::buttonColourId, theme.getAccentColor().withHue(0.8f));
+    wavetableSynthButton.setColour(juce::TextButton::textColourOffId, theme.getTextPrimaryColor());
     wavetableSynthButton.setClickingTogglesState(true);
-    wavetableSynthButton.setToggleState(true, juce::dontSendNotification);  // Standardmäßig AN
+    wavetableSynthButton.setToggleState(true, juce::dontSendNotification);
     addAndMakeVisible(wavetableSynthButton);
 
-    // Timeline button - Teil des Single-Window Workspaces
+    // Timeline button
     timelineButton.setButtonText("Timeline");
-    timelineButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0, 100, 80));
-    timelineButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    timelineButton.setColour(juce::TextButton::buttonColourId, theme.getSuccessColor().darker(0.3f));
+    timelineButton.setColour(juce::TextButton::textColourOffId, theme.getTextPrimaryColor());
     timelineButton.setClickingTogglesState(true);
-    timelineButton.setToggleState(true, juce::dontSendNotification);  // Standardmäßig AN
+    timelineButton.setToggleState(true, juce::dontSendNotification);
     addAndMakeVisible(timelineButton);
+
+    // Plugin Browser button
+    pluginBrowserButton.setButtonText("Plugins");
+    pluginBrowserButton.setColour(juce::TextButton::buttonColourId, theme.getAccentColor().withHue(0.9f));
+    pluginBrowserButton.setColour(juce::TextButton::textColourOffId, theme.getTextPrimaryColor());
+    pluginBrowserButton.setClickingTogglesState(true);
+    pluginBrowserButton.setToggleState(false, juce::dontSendNotification);
+    addAndMakeVisible(pluginBrowserButton);
 }
 
 void MainComponent::connectTrackCallbacks()
@@ -332,10 +487,16 @@ void MainComponent::connectTrackCallbacks()
         track.getComboBox().onChange = [this, i] {
             selectedTrackForRhythm = i;
 
-            if (panelManager)
+            // Neue Panels über DockingManager updaten
+            if (dockingManager)
             {
-                panelManager->getRhythmExplorer().setTargetTrack(i);
-                panelManager->getMelodyPanel().setTargetTrack(i);
+                auto* rhythmPanel = dockingManager->getPanelAs<RhythmExplorerPanel>(PanelType::RhythmExplorer);
+                if (rhythmPanel)
+                    rhythmPanel->setTargetTrack(i);
+
+                auto* melodyPanel = dockingManager->getPanelAs<MelodyPanelPanel>(PanelType::MelodyPanel);
+                if (melodyPanel)
+                    melodyPanel->setTargetTrack(i);
             }
 
             juce::String category = trackManager->getTrack(i).getSelectedCategory();
@@ -370,51 +531,7 @@ void MainComponent::connectTrackCallbacks()
     });
 }
 
-void MainComponent::connectPanelCallbacks()
-{
-    panelManager->getRhythmExplorer().onApplyPattern = [this](int trackIndex, const std::vector<int>& steps, bool clearFirst) {
-        if (trackIndex >= 0 && trackIndex < numTracks)
-        {
-            if (clearFirst)
-                trackManager->getTrack(trackIndex).clearAllSteps();
-
-            for (int step : steps)
-            {
-                trackManager->getTrack(trackIndex).setStepActive(step, true);
-            }
-        }
-    };
-
-    panelManager->getRhythmExplorer().onApplyFill = [this](int trackIndex, const std::vector<int>& steps) {
-        if (trackIndex >= 0 && trackIndex < numTracks)
-        {
-            for (int step : steps)
-            {
-                if (step >= 0 && step < 64)
-                    trackManager->getTrack(trackIndex).setStepActive(step, true);
-            }
-        }
-    };
-
-    panelManager->getMelodyPanel().onApplyMelody = [this](int trackIndex, const std::vector<std::pair<int, int>>& stepPitches) {
-        if (trackIndex >= 0 && trackIndex < numTracks)
-        {
-            trackManager->getTrack(trackIndex).clearAllSteps();
-
-            for (const auto& [step, pitchOffset] : stepPitches)
-            {
-                if (step >= 0 && step < 64)
-                {
-                    StepModifierState state;
-                    state.active = true;
-                    state.hasPitchLock = (pitchOffset != 0);
-                    state.pitchLock = pitchOffset;
-                    trackManager->getTrack(trackIndex).setStepState(step, state);
-                }
-            }
-        }
-    };
-}
+// connectPanelCallbacks() ist nicht mehr benötigt - Callbacks werden jetzt direkt in initializeDockingPanels() gesetzt
 
 void MainComponent::connectUICallbacks()
 {
@@ -471,27 +588,8 @@ void MainComponent::connectUICallbacks()
         audioEngine->setReverbWetLevel(static_cast<float>(reverbSlider.getValue()));
     };
 
-    rhythmExplorerButton.onClick = [this] {
-        bool visible = rhythmExplorerButton.getToggleState();
-        panelManager->setRhythmExplorerVisible(visible);
-
-        if (visible)
-            addAndMakeVisible(panelManager->getRhythmExplorerComponent());
-        else
-            removeChildComponent(panelManager->getRhythmExplorerComponent());
-        resized();
-    };
-
-    melodyWorkstationButton.onClick = [this] {
-        bool visible = melodyWorkstationButton.getToggleState();
-        panelManager->setMelodyPanelVisible(visible);
-
-        if (visible)
-            addAndMakeVisible(panelManager->getMelodyPanelComponent());
-        else
-            removeChildComponent(panelManager->getMelodyPanelComponent());
-        resized();
-    };
+    // RhythmExplorer und MelodyPanel werden jetzt über PanelTogglesBar und DockingManager verwaltet
+    // Keine manuellen Button-Callbacks mehr nötig
 
     // Wavetable button - verwendet NEUES Docking-System
     wavetableSynthButton.onClick = [this] {
@@ -503,6 +601,11 @@ void MainComponent::connectUICallbacks()
     timelineButton.onClick = [this] {
         bool visible = timelineButton.getToggleState();
         dockingManager->setPanelVisible(PanelType::Timeline, visible);
+    };
+
+    // Plugin Browser button - VST Hosting Sidebar
+    pluginBrowserButton.onClick = [this] {
+        togglePluginBrowser();
     };
 }
 
@@ -543,74 +646,26 @@ void MainComponent::resized()
     auto topBarArea = bounds.removeFromTop(topBarHeight);
     layoutTopBar(topBarArea);
 
-    // === 2. SIDEBAR (RhythmExplorer/MelodyPanel) ===
-    bool hasOldSidebar = panelManager->isRhythmExplorerVisible() || panelManager->isMelodyPanelVisible();
-    juce::Rectangle<int> rhythmExplorerArea;
-    juce::Rectangle<int> melodyPanelArea;
+    // === 2. HAUPTBEREICH: Tracks (Links) + Wavetable/Timeline (Rechts) ===
+    // Sidebar-Panels (RhythmExplorer, MelodyPanel) werden jetzt über DockingManager verwaltet
+    // Sie können rechts oder links im DockingManager positioniert werden
 
-    if (hasOldSidebar)
-    {
-        const int rhythmExplorerWidth = 280;
-        const int melodyPanelWidth = 350;
-
-        if (panelManager->isRhythmExplorerVisible() && panelManager->isMelodyPanelVisible())
-        {
-            int totalWidth = rhythmExplorerWidth + melodyPanelWidth + 20;
-            auto rightArea = bounds.removeFromRight(totalWidth);
-            melodyPanelArea = rightArea.removeFromRight(melodyPanelWidth);
-            rightArea.removeFromRight(10);
-            rhythmExplorerArea = rightArea;
-        }
-        else if (panelManager->isRhythmExplorerVisible())
-        {
-            rhythmExplorerArea = bounds.removeFromRight(rhythmExplorerWidth);
-            bounds.removeFromRight(10);
-        }
-        else if (panelManager->isMelodyPanelVisible())
-        {
-            melodyPanelArea = bounds.removeFromRight(melodyPanelWidth);
-            bounds.removeFromRight(10);
-        }
-    }
-
-    // === 3. HAUPTBEREICH: Tracks (Links) + Wavetable/Timeline (Rechts) ===
     auto mainArea = bounds.reduced(5, 5);
+
+    // === 2a. PLUGIN BROWSER (Links, wenn sichtbar) ===
+    layoutPluginBrowser(mainArea);
 
     // Breite für Tracks (ca. 60% des Bereichs)
     const int trackAreaWidth = juce::jmax(500, mainArea.getWidth() * 6 / 10);
     auto trackArea = mainArea.removeFromLeft(trackAreaWidth);
     mainArea.removeFromLeft(5);  // Gap
 
-    // === 3a. TRACKS layouten (Der eigentliche Step Sequencer) ===
+    // === 2b. TRACKS layouten (Der eigentliche Step Sequencer) ===
     layoutTracks(trackArea);
 
-    // === 3b. WAVETABLE + TIMELINE (Rechts mit StretchableLayout) ===
-    auto* synthPanel = dockingManager->getPanel(PanelType::WavetableSynth);
-
-    if (synthPanel && bottomTabs && verticalResizerBar)
-    {
-        juce::Component* comps[] = { synthPanel, verticalResizerBar.get(), bottomTabs.get() };
-        int ids[] = { synthLayoutId, resizerLayoutId, bottomTabsLayoutId };
-        int numComps = 3;
-
-        stretchableManager.layOutComponents(comps, numComps,
-                                             mainArea.getX(),
-                                             mainArea.getY(),
-                                             mainArea.getWidth(),
-                                             mainArea.getHeight(),
-                                             true, true);
-    }
-
-    // === 4. SIDEBAR PANELS layouten ===
-    if (panelManager->isRhythmExplorerVisible() && rhythmExplorerArea.getWidth() > 0)
-    {
-        panelManager->getRhythmExplorerComponent()->setBounds(rhythmExplorerArea.reduced(5));
-    }
-
-    if (panelManager->isMelodyPanelVisible() && melodyPanelArea.getWidth() > 0)
-    {
-        panelManager->getMelodyPanelComponent()->setBounds(melodyPanelArea.reduced(5));
-    }
+    // === 2c. DOCKING MANAGER LAYOUT (Rechts: alle Panels werden hier positioniert) ===
+    // DockingManager kümmert sich um RhythmExplorer, MelodyPanel, Wavetable, etc.
+    dockingManager->updateDockedLayout(mainArea);
 
     isResizing = false;
 }
@@ -626,6 +681,8 @@ void MainComponent::layoutTracks(juce::Rectangle<int> area)
         track.setBounds(area.getX(), y, area.getWidth(), trackHeight);
     });
 }
+
+// layoutOldSidebarPanels ist nicht mehr benötigt - Panels werden über DockingManager verwaltet
 
 void MainComponent::layoutTopBar(juce::Rectangle<int>& area)
 {
@@ -686,6 +743,7 @@ void MainComponent::layoutTopBar(juce::Rectangle<int>& area)
     bottomFlexBox.items.add(juce::FlexItem(melodyWorkstationButton).withWidth(90).withHeight(35).withMargin(margin));
     bottomFlexBox.items.add(juce::FlexItem(wavetableSynthButton).withWidth(110).withHeight(35).withMargin(margin));
     bottomFlexBox.items.add(juce::FlexItem(timelineButton).withWidth(80).withHeight(35).withMargin(margin));
+    bottomFlexBox.items.add(juce::FlexItem(pluginBrowserButton).withWidth(80).withHeight(35).withMargin(margin));
 
     // ==========================================
     // 3. LAYOUT ANWENDEN
@@ -787,4 +845,233 @@ void MainComponent::showAudioSettingsDialog()
     options.resizable = false;
 
     options.launchAsync();
+}
+
+//==============================================================================
+// VST HOSTING METHODS
+//==============================================================================
+
+void MainComponent::initializeVSTHosting()
+{
+    // VST Plugin Manager erstellen
+    vstPluginManager = std::make_unique<VSTPluginManager>();
+    vstPluginManager->initialize();
+
+    // Phase 6.1: Plugin Loading Coordinator erstellen
+    pluginLoadingCoordinator = std::make_unique<PluginLoadingCoordinator>();
+    pluginLoadingCoordinator->initialize();
+
+    // Plugin Loading Coordinator an AudioEngine übergeben
+    audioEngine->setPluginLoadingCoordinator(pluginLoadingCoordinator.get());
+
+    // Callbacks für Plugin Loading Coordinator konfigurieren
+    pluginLoadingCoordinator->setPluginInsertedCallback(
+        [this](uint32_t nodeId, int trackIndex)
+        {
+            DBG("Plugin inserted - NodeID: " + juce::String(nodeId) + ", Track: " + juce::String(trackIndex));
+
+            // Plugin Window öffnen wenn Plugin eingefügt wurde
+            auto plugin = audioEngine->getAudioRoutingGraph()->getPluginInstance(nodeId);
+            if (plugin)
+            {
+                if (pluginWindowManager)
+                    pluginWindowManager->openWindowForPlugin(*plugin);
+            }
+        }
+    );
+
+    pluginLoadingCoordinator->setPluginRemovedCallback(
+        [this](uint32_t nodeId)
+        {
+            DBG("Plugin removed - NodeID: " + juce::String(nodeId));
+
+            // Note: Plugin window will be automatically closed by timer callback
+            // when it detects the plugin is no longer valid
+            // We cannot close directly here because we only have nodeId, not PluginInstance
+        }
+    );
+
+    pluginLoadingCoordinator->setLoadFailureCallback(
+        [this](uint32_t requestId, const juce::String& error)
+        {
+            DBG("Plugin load failed - RequestID: " + juce::String(requestId) + ", Error: " + error);
+
+            // UI-Feedback für Fehler anzeigen (z.B. Alert Window)
+            juce::AlertWindow::showMessageBoxAsync(
+                juce::AlertWindow::WarningIcon,
+                "Plugin Loading Failed",
+                "Failed to load plugin: " + error,
+                "OK");
+        }
+    );
+
+    // Phase 6.2: Plugin Sandbox Manager (Optional) - Disabled for now
+    // pluginSandboxManager = std::make_unique<PluginSandboxManager>();
+    // pluginSandboxManager->initialize();
+    // pluginSandboxManager->setCrashCallback(...);
+    // pluginSandboxManager->setStateChangeCallback(...);
+    // pluginSandboxManager->setCPUWarningCallback(...);
+
+    // Plugin Window Manager erstellen
+    pluginWindowManager = std::make_unique<PluginWindowManager>();
+
+    // Plugin Browser Component erstellen
+    pluginBrowserComponent = std::make_unique<PluginBrowserComponent>(*vstPluginManager, pluginWindowManager.get());
+    addChildComponent(pluginBrowserComponent.get());
+    pluginBrowserComponent->setVisible(false);  // Standardmäßig ausgeblendet
+
+    // Callbacks verbinden
+    connectVSTCallbacks();
+
+    // Prüfen ob Cache existiert, sonst scannen
+    if (!vstPluginManager->hasCachedPluginList())
+    {
+        vstPluginManager->scanForPlugins();
+    }
+
+    DBG("VST Hosting initialized - " + juce::String(vstPluginManager->getAvailableFormats().joinIntoString(", ")) + " formats available");
+    DBG("Plugin Loading Coordinator initialized (Phase 6.1: Lock-Free Loading)");
+    // DBG("Plugin Sandbox Manager initialized (Phase 6.2: Plugin Isolation) - Disabled for now");
+
+    // Phase 6.3: CPU Profiler initialisieren (Vereinfachte Version)
+    cpuProfiler = std::make_unique<CPUProfiler>();
+
+    // Callbacks für CPU-Warnungen konfigurieren
+    cpuProfiler->setWarningCallback(
+        [this](ProfilingComponent type, int index, float cpuUsage)
+        {
+            juce::String componentName = toString(type) + " " + juce::String(index);
+            DBG("CPU Warning - Component: " + componentName +
+                ", CPU: " + juce::String(cpuUsage * 100.0f, 1) + "%");
+
+            // UI-Feedback anzeigen (nur bei kritischer Last)
+            if (cpuUsage > 0.95f)
+            {
+                juce::AlertWindow::showMessageBoxAsync(
+                    juce::AlertWindow::WarningIcon,
+                    "CPU Usage Critical",
+                    "Component: " + componentName + "\n" +
+                    "CPU Usage: " + juce::String(cpuUsage * 100.0f, 1) + "%\n\n" +
+                    "Consider reducing effects or plugins to maintain stability.",
+                    "OK");
+            }
+        }
+    );
+
+    // CPU Profiler an AudioEngine übergeben
+    audioEngine->setCPUProfiler(cpuProfiler.get());
+
+    DBG("CPU Profiler initialized (Phase 6.3: Performance Metrics) - Simplified version");
+}
+
+void MainComponent::connectVSTCallbacks()
+{
+    // Callback wenn ein Plugin geladen wird
+    pluginBrowserComponent->setOnPluginLoaded([this](std::unique_ptr<PluginInstance> instance)
+    {
+        if (instance)
+        {
+            loadPluginToSelectedTrack(std::move(instance));
+        }
+    });
+
+    // Track-Auswahl-Callbacks
+    trackManager->forEachTrack([this](int i, TrackComponent& track)
+    {
+        // Bei Track-Auswahl: ausgewählten Track aktualisieren
+        track.onSelect = [this, i]
+        {
+            selectedTrackIndex = i;
+            pluginBrowserComponent->setTargetTrack(i);
+        };
+    });
+}
+
+void MainComponent::togglePluginBrowser()
+{
+    pluginBrowserVisible = !pluginBrowserVisible;
+    pluginBrowserButton.setToggleState(pluginBrowserVisible, juce::dontSendNotification);
+    pluginBrowserComponent->setVisible(pluginBrowserVisible);
+
+    resized();
+}
+
+void MainComponent::loadPluginToSelectedTrack(std::unique_ptr<PluginInstance> instance)
+{
+    if (!instance)
+        return;
+
+    // Ziel-Track bestimmen (0-basiert = Track 1)
+    int targetTrack = selectedTrackIndex;
+    if (targetTrack < 0 || targetTrack >= numTracks)
+        targetTrack = 0;  // Fallback auf Track 1
+
+    // Get the AudioRoutingGraph from AudioEngine
+    auto* graph = audioEngine->getAudioRoutingGraph();
+    if (!graph)
+    {
+        DBG("AudioRoutingGraph not available");
+        return;
+    }
+
+    // Get the raw AudioPluginInstance from the wrapper for verification
+    auto* audioPlugin = instance->getAudioPluginInstance();
+    if (!audioPlugin)
+    {
+        DBG("No AudioPluginInstance in wrapper");
+        return;
+    }
+
+    // Convert unique_ptr to shared_ptr for shared ownership
+    // The AudioRoutingGraph and LoadedPlugin will share ownership
+    auto sharedInstance = std::shared_ptr<PluginInstance>(instance.release());
+
+    // Insert the plugin into the track's plugin chain using shared ownership
+    // This stores the PluginInstance wrapper in the graph for processing
+    NodeID nodeId = graph->insertPluginInstanceInTrack(targetTrack, -1, sharedInstance);
+
+    if (nodeId == 0)
+    {
+        DBG("Failed to insert plugin into track " + juce::String(targetTrack + 1));
+        return;
+    }
+
+    // Store the loaded plugin info for window management and state access
+    LoadedPlugin loadedPlugin;
+    loadedPlugin.nodeId = nodeId;
+    loadedPlugin.trackIndex = targetTrack;
+    loadedPlugin.positionInChain = static_cast<int>(graph->getTrackPluginChain(targetTrack)->size()) - 1;
+    loadedPlugin.pluginInstanceWrapper = sharedInstance;  // Shared ownership
+    loadedPlugin.pluginInstance = audioPlugin;            // Convenience pointer
+    loadedPlugins.push_back(loadedPlugin);
+
+    // Open the plugin window for UI interaction
+    auto* window = pluginWindowManager->openWindowForPlugin(*sharedInstance);
+
+    if (window)
+    {
+        DBG("Loaded plugin '" + sharedInstance->getName() + "' on Track " + juce::String(targetTrack + 1)
+            + " with NodeID " + juce::String(nodeId));
+    }
+    else
+    {
+        DBG("Plugin loaded but failed to create window: " + sharedInstance->getName());
+    }
+
+    // Update latency compensation after adding the plugin
+    graph->updateLatencyCompensation();
+}
+
+juce::Rectangle<int> MainComponent::layoutPluginBrowser(juce::Rectangle<int>& mainArea)
+{
+    if (!pluginBrowserVisible)
+        return {};
+
+    // Plugin Browser auf der linken Seite
+    auto browserArea = mainArea.removeFromLeft(pluginBrowserWidth);
+    mainArea.removeFromLeft(5);  // Gap
+
+    pluginBrowserComponent->setBounds(browserArea.reduced(2));
+
+    return browserArea;
 }

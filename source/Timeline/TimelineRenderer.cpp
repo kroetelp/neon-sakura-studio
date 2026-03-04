@@ -59,6 +59,14 @@ void TimelineRenderer::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
             {
                 renderMidiClip(midiMessages, *clip, currentBeat, numSamples);
             }
+            else if (clip->getType() == TimelineClip::Type::StepSequencer)
+            {
+                if (auto* stepClip = dynamic_cast<StepSequencerClip*>(clip))
+                {
+                    double endBeat = currentBeat + (numSamples * beatsPerSample);
+                    renderStepSequencerClip(midiMessages, *stepClip, currentBeat, endBeat, transport.getBPM());
+                }
+            }
         }
 
         // Apply track volume/pan and mix to output
@@ -205,6 +213,20 @@ void TimelineRenderer::renderMidiClip(juce::MidiBuffer& midiBuffer, TimelineClip
                                sampleOffset);
         }
     }
+}
+
+void TimelineRenderer::renderStepSequencerClip(juce::MidiBuffer& midiBuffer, StepSequencerClip& clip,
+                                                 double currentBeat, double endBeat, double bpm)
+{
+    double clipStart = clip.startBeat.load();
+    double clipEnd = clipStart + clip.lengthBeats.load();
+
+    // Check if we're within the clip's time range
+    if (currentBeat >= clipEnd || endBeat <= clipStart)
+        return;
+
+    // Render the step sequencer clip to MIDI
+    clip.renderToMidiBuffer(midiBuffer, clipStart, currentBeat, endBeat, bpm, 0);
 }
 
 void TimelineRenderer::applyTrackMixing(juce::AudioBuffer<float>& buffer, int trackIndex)

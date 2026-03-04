@@ -9,10 +9,10 @@
 class TimelineClip
 {
 public:
-    enum class Type { Audio, Midi };
+    enum class Type { Audio, Midi, StepSequencer };
 
     TimelineClip(Type type);
-    ~TimelineClip() = default;
+    virtual ~TimelineClip() = default;
 
     // Identity
     juce::Uuid getId() const { return clipId; }

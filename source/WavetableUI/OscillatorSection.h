@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "../WavetableSynth/WavetableVoice.h"
+#include "../Theme/ThemeManager.h"
 #include <memory>
 
 class WavetableParams;
@@ -59,10 +60,10 @@ private:
     juce::Label pitchLabel;
     juce::Label unisonLabel;
 
-    // Colors
-    static juce::Colour getNeonPink() { return juce::Colour(255, 20, 147); }
-    static juce::Colour getNeonCyan() { return juce::Colour(0, 255, 255); }
-    static juce::Colour getPanelBackground() { return juce::Colour(25, 25, 40); }
+    // Colors (delegated to ThemeManager)
+    static juce::Colour getNeonPink() { return ThemeManager::getInstance().getAccentColor(); }
+    static juce::Colour getNeonCyan() { return ThemeManager::getInstance().getInfoColor(); }
+    static juce::Colour getPanelBackground() { return ThemeManager::getInstance().getPanelBackgroundColor(); }
 
     void setupSlider(juce::Slider& slider, const juce::String& name);
     void setupLabel(juce::Label& label, const juce::String& text);

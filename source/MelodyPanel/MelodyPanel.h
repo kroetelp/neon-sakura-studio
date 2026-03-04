@@ -4,8 +4,9 @@
 #include <melatonin_blur.h>
 #include <functional>
 #include <vector>
-#include "MusicTheory.h"
-#include "MelodyGenerator.h"
+#include "../MusicTheory.h"
+#include "../MelodyGenerator.h"
+#include "../Theme/ThemeManager.h"
 
 // MelodyPanel - Full Workstation UI for melody creation
 class MelodyPanel : public juce::Component
@@ -115,13 +116,13 @@ private:
     // Current melody state
     std::vector<MelodyNote> currentMelody;
 
-    // Colors
-    juce::Colour getNeonPink() const { return juce::Colour(255, 20, 147); }
-    juce::Colour getNeonCyan() const { return juce::Colour(0, 255, 255); }
-    juce::Colour getNeonPurple() const { return juce::Colour(180, 0, 255); }
-    juce::Colour getNeonGreen() const { return juce::Colour(0, 255, 128); }
-    juce::Colour getNeonOrange() const { return juce::Colour(255, 165, 0); }
-    juce::Colour getDarkBackground() const { return juce::Colour(15, 15, 25); }
+    // Colors (delegated to ThemeManager)
+    juce::Colour getNeonPink() const { return ThemeManager::getInstance().getAccentColor(); }
+    juce::Colour getNeonCyan() const { return ThemeManager::getInstance().getInfoColor(); }
+    juce::Colour getNeonPurple() const { return ThemeManager::getInstance().getAccentColor().withHue(0.8f); }
+    juce::Colour getNeonGreen() const { return ThemeManager::getInstance().getSuccessColor(); }
+    juce::Colour getNeonOrange() const { return ThemeManager::getInstance().getWarningColor(); }
+    juce::Colour getDarkBackground() const { return ThemeManager::getInstance().getBackgroundColor(); }
 
     // Setup helpers
     void setupComboBox(juce::ComboBox& combo, const juce::StringArray& items, int defaultIndex = 0);

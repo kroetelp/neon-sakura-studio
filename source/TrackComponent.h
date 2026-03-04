@@ -10,6 +10,7 @@
 #include "TrackModel.h"
 #include "TrackAudioProcessor.h"
 #include "TrackType.h"
+#include "Theme/ThemeManager.h"
 
 class WavetableSynth;
 class WavetableParams;
@@ -116,6 +117,9 @@ public:
     // Callback for collapse state changes
     std::function<void()> onStateChange;
 
+    // Callback when track is selected (for VST plugin assignment)
+    std::function<void()> onSelect;
+
     // Callback to open wavetable editor (called when WT Edit button is clicked)
     std::function<void(int trackIndex, std::shared_ptr<WavetableParams> params, std::shared_ptr<WavetableData> wavetable)> onOpenWavetableEditor;
 
@@ -209,12 +213,12 @@ private:
     // Flag to prevent repaints during resize
     bool isResizing{false};
 
-    // Colors
-    juce::Colour getNeonPink() const { return juce::Colour(255, 20, 147); }
-    juce::Colour getNeonCyan() const { return juce::Colour(0, 255, 255); }
-    juce::Colour getNeonPurple() const { return juce::Colour(180, 0, 255); }
-    juce::Colour getDarkBackground() const { return juce::Colour(15, 15, 25); }
-    juce::Colour getStepInactive() const { return juce::Colour(30, 30, 45); }
+    // Colors (delegated to ThemeManager)
+    juce::Colour getNeonPink() const { return ThemeManager::getInstance().getAccentColor(); }
+    juce::Colour getNeonCyan() const { return ThemeManager::getInstance().getInfoColor(); }
+    juce::Colour getNeonPurple() const { return ThemeManager::getInstance().getAccentColor().withHue(0.8f); }
+    juce::Colour getDarkBackground() const { return ThemeManager::getInstance().getBackgroundColor(); }
+    juce::Colour getStepInactive() const { return ThemeManager::getInstance().getPanelBackgroundColor(); }
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TrackComponent)
 };

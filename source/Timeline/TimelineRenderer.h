@@ -3,6 +3,7 @@
 #include "TimelineData.h"
 #include "TimelineTransport.h"
 #include "../WavetableSynth/WavetableEngine.h"
+#include "../StepSequencer/StepSequencerClip.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <memory>
 #include <array>
@@ -50,6 +51,8 @@ private:
     void updateActiveClips(double currentBeat);
     void renderAudioClip(juce::AudioBuffer<float>& buffer, TimelineClip& clip, ClipRenderState& state);
     void renderMidiClip(juce::MidiBuffer& midiBuffer, TimelineClip& clip, double startBeat, int numSamples);
+    void renderStepSequencerClip(juce::MidiBuffer& midiBuffer, StepSequencerClip& clip,
+                                  double currentBeat, double endBeat, double bpm);
     void applyTrackMixing(juce::AudioBuffer<float>& buffer, int trackIndex);
 
     double samplesToBeats(int64_t samples) const;

@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_basics/juce_audio_basics.h>
+#include "../Theme/ThemeManager.h"
 #include "melatonin_blur.h"
 #include <vector>
 
@@ -35,10 +36,10 @@ private:
     melatonin::DropShadow leftGlow { juce::Colour(0, 255, 255), 3, {0, 0} };
     melatonin::DropShadow rightGlow { juce::Colour(255, 20, 147), 3, {0, 0} };
 
-    // Colors
-    static juce::Colour getNeonPink() { return juce::Colour(255, 20, 147); }
-    static juce::Colour getNeonCyan() { return juce::Colour(0, 255, 255); }
-    static juce::Colour getPanelBackground() { return juce::Colour(25, 25, 40); }
+    // Colors (delegated to ThemeManager)
+    static juce::Colour getNeonPink() { return ThemeManager::getInstance().getAccentColor(); }
+    static juce::Colour getNeonCyan() { return ThemeManager::getInstance().getInfoColor(); }
+    static juce::Colour getPanelBackground() { return ThemeManager::getInstance().getPanelBackgroundColor(); }
 
     juce::Path createWaveformPath(const std::vector<float>& buffer,
                                    const juce::Rectangle<float>& bounds);

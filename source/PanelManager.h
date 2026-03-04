@@ -13,6 +13,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <memory>
+#include "Theme/ThemeManager.h"
 
 class RhythmExplorer;
 class MelodyPanel;
@@ -66,8 +67,8 @@ public:
     juce::DocumentWindow* getTrackWavetableWindow() { return trackWavetableWindow.get(); }
     juce::DocumentWindow* getTimelineWindow() { return timelineWindow.get(); }
 
-    // Window background color helper
-    static juce::Colour getDarkBackground();
+    // Window background color helper (delegated to ThemeManager)
+    static juce::Colour getDarkBackground() { return ThemeManager::getInstance().getBackgroundColor(); }
 
 private:
     // Side panels

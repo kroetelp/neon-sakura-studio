@@ -12,6 +12,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "../WootingManager.h"
+#include "../Theme/ThemeManager.h"
 
 class WootingSettingsPanel : public juce::Component,
                               private juce::Timer
@@ -42,12 +43,12 @@ private:
     juce::TextButton testButton;
     juce::Label activeKeysLabel;
 
-    // Colors
-    juce::Colour getNeonCyan() const { return juce::Colour(0, 255, 255); }
-    juce::Colour getNeonPink() const { return juce::Colour(255, 20, 147); }
-    juce::Colour getNeonGreen() const { return juce::Colour(0, 255, 100); }
-    juce::Colour getNeonPurple() const { return juce::Colour(180, 0, 255); }
-    juce::Colour getDarkBackground() const { return juce::Colour(15, 15, 25); }
+    // Colors (delegated to ThemeManager)
+    juce::Colour getNeonCyan() const { return ThemeManager::getInstance().getInfoColor(); }
+    juce::Colour getNeonPink() const { return ThemeManager::getInstance().getAccentColor(); }
+    juce::Colour getNeonGreen() const { return ThemeManager::getInstance().getSuccessColor(); }
+    juce::Colour getNeonPurple() const { return ThemeManager::getInstance().getAccentColor().withHue(0.8f); }
+    juce::Colour getDarkBackground() const { return ThemeManager::getInstance().getBackgroundColor(); }
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(WootingSettingsPanel)
 };

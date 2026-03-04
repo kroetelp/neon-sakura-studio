@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "../WavetableSynth/WavetableVoice.h"
+#include "../Theme/ThemeManager.h"
 #include <memory>
 
 class WavetableParams;
@@ -47,7 +48,7 @@ private:
 
     void updateEnvelopePath();
 
-    // Colors
-    static juce::Colour getNeonGreen() { return juce::Colour(0, 255, 128); }
-    static juce::Colour getPanelBackground() { return juce::Colour(25, 25, 40); }
+    // Colors (delegated to ThemeManager)
+    static juce::Colour getNeonGreen() { return ThemeManager::getInstance().getSuccessColor(); }
+    static juce::Colour getPanelBackground() { return ThemeManager::getInstance().getPanelBackgroundColor(); }
 };

@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "../WavetableSynth/WavetableEngine.h"
+#include "../Theme/ThemeManager.h"
 #include <memory>
 
 /**
@@ -63,12 +64,12 @@ private:
     juce::Label reverbSizeLabel;
     juce::Label reverbDampingLabel;
 
-    // Colors
-    static juce::Colour getNeonCyan() { return juce::Colour(0, 255, 255); }
-    static juce::Colour getNeonPink() { return juce::Colour(255, 20, 147); }
-    static juce::Colour getNeonPurple() { return juce::Colour(180, 0, 255); }
-    static juce::Colour getNeonGreen() { return juce::Colour(0, 255, 100); }
-    static juce::Colour getPanelBackground() { return juce::Colour(25, 25, 40); }
+    // Colors (delegated to ThemeManager)
+    static juce::Colour getNeonCyan() { return ThemeManager::getInstance().getInfoColor(); }
+    static juce::Colour getNeonPink() { return ThemeManager::getInstance().getAccentColor(); }
+    static juce::Colour getNeonPurple() { return ThemeManager::getInstance().getAccentColor().withHue(0.8f); }
+    static juce::Colour getNeonGreen() { return ThemeManager::getInstance().getSuccessColor(); }
+    static juce::Colour getPanelBackground() { return ThemeManager::getInstance().getPanelBackgroundColor(); }
 
     void setupSlider(juce::Slider& slider, juce::Label& label, const juce::String& name,
                      double minVal, double maxVal, double defaultVal,

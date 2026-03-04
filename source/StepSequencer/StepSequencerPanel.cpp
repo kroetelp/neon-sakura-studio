@@ -8,18 +8,21 @@
 #include "../Timeline/PatternToClipConverter.h"
 #include "../Timeline/TimelineData.h"
 #include "../Timeline/TimelineTrack.h"
+#include "../Theme/ThemeManager.h"
 
 StepSequencerPanel::StepSequencerPanel()
     : DockablePanel(PanelType::StepSequencer, "Step Sequencer")
     , clipConverter(std::make_unique<PatternToClipConverter>())
 {
+    auto& theme = ThemeManager::getInstance();
+
     createStepGrid();
 
     // === Push to Timeline Button ===
     pushToTimelineButton.setButtonText("Push to Timeline");
-    pushToTimelineButton.setColour(juce::TextButton::buttonColourId, juce::Colour(30, 30, 45));
-    pushToTimelineButton.setColour(juce::TextButton::textColourOnId, juce::Colour(0, 255, 255));
-    pushToTimelineButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0, 255, 255));
+    pushToTimelineButton.setColour(juce::TextButton::buttonColourId, theme.getPanelBackgroundColor());
+    pushToTimelineButton.setColour(juce::TextButton::textColourOnId, theme.getInfoColor());
+    pushToTimelineButton.setColour(juce::TextButton::textColourOffId, theme.getInfoColor());
     pushToTimelineButton.onClick = [this]() {
         pushCurrentTrackToTimeline();
     };
@@ -27,9 +30,9 @@ StepSequencerPanel::StepSequencerPanel()
 
     // === Push All Button ===
     pushAllButton.setButtonText("Push All");
-    pushAllButton.setColour(juce::TextButton::buttonColourId, juce::Colour(30, 30, 45));
-    pushAllButton.setColour(juce::TextButton::textColourOnId, juce::Colour(180, 0, 255));
-    pushAllButton.setColour(juce::TextButton::textColourOffId, juce::Colour(180, 0, 255));
+    pushAllButton.setColour(juce::TextButton::buttonColourId, theme.getPanelBackgroundColor());
+    pushAllButton.setColour(juce::TextButton::textColourOnId, theme.getAccentColor().withHue(0.8f));
+    pushAllButton.setColour(juce::TextButton::textColourOffId, theme.getAccentColor().withHue(0.8f));
     pushAllButton.onClick = [this]() {
         pushAllTracksToTimeline();
     };
@@ -37,7 +40,7 @@ StepSequencerPanel::StepSequencerPanel()
 
     // === Status Label ===
     statusLabel.setText("Ready", juce::dontSendNotification);
-    statusLabel.setColour(juce::Label::textColourId, juce::Colour(150, 150, 170));
+    statusLabel.setColour(juce::Label::textColourId, theme.getTextSecondaryColor());
     statusLabel.setFont(juce::Font(10.0f));
     addAndMakeVisible(statusLabel);
 }
@@ -204,6 +207,8 @@ void StepSequencerPanel::pushAllTracksToTimeline()
 
 void StepSequencerPanel::createStepGrid()
 {
+    auto& theme = ThemeManager::getInstance();
+
     // Alte Buttons entfernen
     stepButtons.clear();
     trackLabels.clear();
@@ -213,16 +218,16 @@ void StepSequencerPanel::createStepGrid()
     stepButtons.resize(numTracks);
     trackLabels.resize(numTracks);
 
-    // Track-spezifische Farben (Neon Sakura Palette)
+    // Track-spezifische Farben (basierend auf Theme)
     juce::Colour trackColours[] = {
-        juce::Colour(255, 20, 147),   // Neon Pink
-        juce::Colour(0, 255, 255),    // Neon Cyan
-        juce::Colour(180, 0, 255),    // Neon Purple
-        juce::Colour(255, 165, 0),    // Neon Orange
-        juce::Colour(0, 255, 127),    // Neon Green
-        juce::Colour(255, 255, 0),    // Neon Yellow
-        juce::Colour(255, 0, 127),    // Neon Rose
-        juce::Colour(127, 255, 255),  // Neon Aqua
+        theme.getAccentColor(),                             // Primary Accent
+        theme.getInfoColor(),                               // Info/Cyan
+        theme.getAccentColor().withHue(0.8f),               // Purple
+        theme.getWarningColor(),                            // Warning/Orange
+        theme.getSuccessColor(),                            // Success/Green
+        theme.getAccentColor().withHue(0.15f),              // Yellow-ish
+        theme.getAccentColor().withHue(0.95f),              // Rose
+        theme.getInfoColor().withSaturation(0.7f),          // Aqua
     };
 
     for (int track = 0; track < numTracks; ++track)
@@ -329,15 +334,17 @@ void StepSequencerPanel::resized()
 
 void StepSequencerPanel::paint(juce::Graphics& g)
 {
+    auto& theme = ThemeManager::getInstance();
+
     // Hintergrund
-    g.fillAll(juce::Colour(15, 15, 25));
+    g.fillAll(theme.getBackgroundColor());
 
     // Content-Bereich Hintergrund
     auto contentBounds = getContentBounds();
     if (contentBounds.isEmpty())
         contentBounds = getLocalBounds();
 
-    g.setColour(juce::Colour(20, 20, 35));
+    g.setColour(theme.getPanelBackgroundColor());
     g.fillRect(contentBounds);
 
     // Beat-Marker (alle 4 Steps)
@@ -345,7 +352,7 @@ void StepSequencerPanel::paint(juce::Graphics& g)
     int stepWidth = (contentBounds.getWidth() - trackLabelWidth - (numSteps - 1) * stepGap) / numSteps;
     stepWidth = juce::jlimit(24, 60, stepWidth);
 
-    g.setColour(juce::Colour(60, 60, 80));
+    g.setColour(theme.getGridLineColor());
 
     for (int step = 0; step < numSteps; step += 4)
     {
@@ -368,6 +375,8 @@ void StepSequencerPanel::paint(juce::Graphics& g)
 
 void StepSequencerPanel::drawPlayhead(juce::Graphics& g, int step)
 {
+    auto& theme = ThemeManager::getInstance();
+
     auto contentBounds = getContentBounds();
     if (contentBounds.isEmpty())
         contentBounds = getLocalBounds();
@@ -380,11 +389,11 @@ void StepSequencerPanel::drawPlayhead(juce::Graphics& g, int step)
     int width = stepWidth;
 
     // Playhead-Highlight
-    g.setColour(juce::Colour(0, 255, 255).withAlpha(0.15f));
+    g.setColour(theme.getPlayheadColor().withAlpha(0.15f));
     g.fillRect(x, contentBounds.getY(), width, contentBounds.getHeight());
 
     // Playhead-Linie oben
-    g.setColour(juce::Colour(0, 255, 255));
+    g.setColour(theme.getPlayheadColor());
     g.fillRect(x, contentBounds.getY(), width, 3);
 }
 

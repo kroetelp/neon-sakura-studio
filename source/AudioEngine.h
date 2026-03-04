@@ -24,20 +24,22 @@
 #include <random>
 #include "ITrackDataProvider.h"
 #include "WavetableSynth/WavetableEngine.h"
+#include "AudioRouting/AudioRoutingGraph.h"  // NEU: Audio Routing Graph
+#include "VSTHost/VSTPluginManager.h"  // NEU: VST Hosting
+#include "VSTHost/PluginLoadingCoordinator.h"  // Phase 6.1: Lock-Free Plugin Loading
+#include "AudioRouting/CPUProfiler.h"  // Phase 6.3: CPU Profiling
 
 class PlaybackController;
 class TimelineData;
 class TimelineTransport;
 class TimelineRenderer;
 class RecordingManager;
+class TimelinePlayHead;
 
 class AudioEngine
 {
 public:
     static constexpr int numTracks = 8;
-
-    // Engine Mode - Step Sequencer or Timeline/DAW
-    enum class EngineMode { StepSequencer, Timeline };
 
     /**
      * Constructor with ITrackDataProvider interface
@@ -95,15 +97,32 @@ public:
     WavetableEngine& getWavetableEngine() { return wavetableEngine; }
     const WavetableEngine& getWavetableEngine() const { return wavetableEngine; }
 
-    // === Timeline Mode ===
-    EngineMode getEngineMode() const { return engineMode.load(); }
-    void setEngineMode(EngineMode mode);
+    // === VST Plugin Hosting ===
+    VSTPluginManager* getVSTPluginManager() { return vstPluginManager; }
+    const VSTPluginManager* getVSTPluginManager() const { return vstPluginManager; }
+    AudioRoutingGraph* getAudioRoutingGraph() { return audioRoutingGraph.get(); }
+    const AudioRoutingGraph* getAudioRoutingGraph() const { return audioRoutingGraph.get(); }
+    PluginLoadingCoordinator* getPluginLoadingCoordinator() { return pluginLoadingCoordinator.get(); }
+    const PluginLoadingCoordinator* getPluginLoadingCoordinator() const { return pluginLoadingCoordinator.get(); }
 
+    // === Phase 6.3: CPU Profiling ===
+    CPUProfiler* getCPUProfiler() { return cpuProfiler.get(); }
+    const CPUProfiler* getCPUProfiler() const { return cpuProfiler.get(); }
+
+    void setVSTPluginManager(VSTPluginManager* manager);
+    void setPluginLoadingCoordinator(PluginLoadingCoordinator* coordinator);
+    void setCPUProfiler(CPUProfiler* profiler);
+
+    // === Timeline (always active) ===
     TimelineData& getTimelineData();
     const TimelineData& getTimelineData() const;
     TimelineTransport& getTimelineTransport();
     TimelineRenderer& getTimelineRenderer();
     RecordingManager& getRecordingManager();
+
+    // === PlayHead for Plugin Sync ===
+    TimelinePlayHead& getTimelinePlayHead();
+    const TimelinePlayHead& getTimelinePlayHead() const;
 
 private:
     // Dependencies (injected)
@@ -174,17 +193,22 @@ private:
     std::unique_ptr<juce::AudioBuffer<float>> wavetableBuffer;
     juce::MidiBuffer wavetableMidiBuffer;
 
-    // Timeline Mode
-    std::atomic<EngineMode> engineMode{EngineMode::StepSequencer};
+    // Timeline (always active, unified architecture)
     std::unique_ptr<TimelineData> timelineData;
     std::unique_ptr<TimelineTransport> timelineTransport;
     std::unique_ptr<TimelineRenderer> timelineRenderer;
     std::unique_ptr<RecordingManager> recordingManager;
+    std::unique_ptr<TimelinePlayHead> timelinePlayHead;
+
+    // === VST Plugin Hosting ===
+    VSTPluginManager* vstPluginManager = nullptr;  // Externe Referenz (gehört MainComponent)
+    std::unique_ptr<AudioRoutingGraph> audioRoutingGraph;  // Audio Routing für VSTs
+    std::unique_ptr<PluginLoadingCoordinator> pluginLoadingCoordinator;  // Phase 6.1: Lock-Free Plugin Loading
+    std::unique_ptr<CPUProfiler> cpuProfiler;  // Phase 6.3: CPU Profiling
 
     // Helper Methods
     void calculateSamplesPerStep();
-    void generateMidiForBuffer(const juce::AudioSourceChannelInfo& bufferToFill,
-                             std::array<juce::MidiBuffer, numTracks>& trackMidiBuffers);
+    void generateStepSequencerMidi(int numSamples);
     void renderAndMixTracks(const juce::AudioSourceChannelInfo& bufferToFill,
                          const std::array<juce::MidiBuffer, numTracks>& trackMidiBuffers);
     void applyMasterReverb(juce::AudioBuffer<float>& buffer);

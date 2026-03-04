@@ -6,6 +6,7 @@
 
 void MelodyPanel::MiniKeyboard::paint(juce::Graphics& g)
 {
+    auto& theme = ThemeManager::getInstance();
     auto bounds = getLocalBounds().toFloat();
     float whiteKeyWidth = bounds.getWidth() / 7.0f;
     float blackKeyWidth = whiteKeyWidth * 0.6f;
@@ -17,7 +18,7 @@ void MelodyPanel::MiniKeyboard::paint(juce::Graphics& g)
         float x = i * whiteKeyWidth;
         bool isActive = std::find(activeNotes.begin(), activeNotes.end(), whiteNotes[i]) != activeNotes.end();
 
-        g.setColour(isActive ? juce::Colour(0, 255, 255) : juce::Colours::white);
+        g.setColour(isActive ? theme.getInfoColor() : juce::Colours::white);
         g.fillRect(x + 1, 0.0f, whiteKeyWidth - 2, bounds.getHeight());
         g.setColour(juce::Colours::darkgrey);
         g.drawRect(x + 1, 0.0f, whiteKeyWidth - 2, bounds.getHeight());
@@ -32,7 +33,7 @@ void MelodyPanel::MiniKeyboard::paint(juce::Graphics& g)
         float x = blackPositions[i] * whiteKeyWidth - blackKeyWidth / 2;
         bool isActive = std::find(activeNotes.begin(), activeNotes.end(), blackNotes[i]) != activeNotes.end();
 
-        g.setColour(isActive ? juce::Colour(255, 20, 147) : juce::Colours::black);
+        g.setColour(isActive ? theme.getAccentColor() : juce::Colours::black);
         g.fillRect(x, 0.0f, blackKeyWidth, bounds.getHeight() * 0.6f);
     }
 }
@@ -43,12 +44,13 @@ void MelodyPanel::MiniKeyboard::paint(juce::Graphics& g)
 
 void MelodyPanel::PianoRoll::paint(juce::Graphics& g)
 {
+    auto& theme = ThemeManager::getInstance();
     auto bounds = getLocalBounds().toFloat();
     float stepWidth = bounds.getWidth() / 16.0f;
     float noteHeight = bounds.getHeight() / 24.0f;  // 2 octaves
 
     // Background
-    g.fillAll(juce::Colour(20, 20, 30));
+    g.fillAll(theme.getPanelBackgroundColor());
 
     // Grid lines
     g.setColour(juce::Colours::white.withAlpha(0.1f));
@@ -63,7 +65,7 @@ void MelodyPanel::PianoRoll::paint(juce::Graphics& g)
     if (scaleIndex >= 0 && scaleIndex < static_cast<int>(scales.size()))
     {
         const auto& scale = scales[scaleIndex];
-        g.setColour(juce::Colour(0, 255, 255).withAlpha(0.1f));
+        g.setColour(theme.getInfoColor().withAlpha(0.1f));
 
         for (int interval : scale.intervals)
         {
@@ -87,10 +89,10 @@ void MelodyPanel::PianoRoll::paint(juce::Graphics& g)
             juce::Path p;
             p.addRoundedRectangle(x + 2, static_cast<float>(y), stepWidth - 4, noteHeight - 2, 2);
 
-            melatonin::DropShadow glow(juce::Colour(255, 20, 147), 3, {0, 0});
+            melatonin::DropShadow glow(theme.getAccentColor(), 3, {0, 0});
             glow.render(g, p);
 
-            g.setColour(note.isGhost ? juce::Colour(100, 100, 100) : juce::Colour(255, 20, 147));
+            g.setColour(note.isGhost ? theme.getTextSecondaryColor() : theme.getAccentColor());
             g.fillPath(p);
         }
     }

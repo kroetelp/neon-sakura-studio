@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "../WavetableSynth/Waveshaper.h"
+#include "../Theme/ThemeManager.h"
 #include <memory>
 
 class WavetableParams;
@@ -40,8 +41,8 @@ private:
     juce::Label amountLabel;
     juce::Label mixLabel;
 
-    // Colors - Magenta/Pink for shaper to distinguish from filter (cyan)
-    static juce::Colour getNeonPink() { return juce::Colour(255, 0, 255); }
-    static juce::Colour getNeonMagenta() { return juce::Colour(255, 50, 150); }
-    static juce::Colour getPanelBackground() { return juce::Colour(25, 25, 40); }
+    // Colors - Magenta/Pink for shaper (delegated to ThemeManager)
+    static juce::Colour getNeonPink() { return ThemeManager::getInstance().getAccentColor(); }
+    static juce::Colour getNeonMagenta() { return ThemeManager::getInstance().getAccentColor().withHue(0.9f); }
+    static juce::Colour getPanelBackground() { return ThemeManager::getInstance().getPanelBackgroundColor(); }
 };

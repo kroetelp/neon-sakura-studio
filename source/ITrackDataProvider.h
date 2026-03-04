@@ -46,4 +46,8 @@ public:
 
     // Audio processing (for wavetable tracks)
     virtual void processAudioBlock(int trackIndex, juce::AudioBuffer<float>& buffer) = 0;
+
+    // Playhead position (for automation)
+    virtual double getPlayheadBeat() const = 0;
+    virtual void setPlayheadBeat(double beat) = 0;
 };

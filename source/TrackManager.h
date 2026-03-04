@@ -37,6 +37,8 @@ public:
     int getTrackLoopLength(int trackIndex) const override;
     TrackType getTrackType(int trackIndex) const override;
     void processAudioBlock(int trackIndex, juce::AudioBuffer<float>& buffer) override;
+    double getPlayheadBeat() const override;
+    void setPlayheadBeat(double beat) override;
 
     // Track array access
     TrackComponent& getTrack(int index);
@@ -61,6 +63,7 @@ public:
 private:
     std::array<std::unique_ptr<TrackComponent>, numTracks> tracks;
     juce::AudioFormatManager& formatManager;
+    std::atomic<double> playheadBeat{0.0};
 
     // Helper to validate track index
     bool isValidTrackIndex(int index) const { return index >= 0 && index < numTracks; }

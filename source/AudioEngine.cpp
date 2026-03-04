@@ -7,7 +7,12 @@
 #include "Timeline/TimelineData.h"
 #include "Timeline/TimelineTransport.h"
 #include "Timeline/TimelineRenderer.h"
+#include "Timeline/TimelinePlayHead.h"
 #include "Timeline/RecordingManager.h"
+#include "AudioRouting/AudioRoutingGraph.h"
+#include "VSTHost/VSTPluginManager.h"
+#include "VSTHost/PluginLoadingCoordinator.h"
+#include "AudioRouting/CPUProfiler.h"
 
 AudioEngine::AudioEngine(ITrackDataProvider* provider)
     : trackProvider(provider)
@@ -18,6 +23,7 @@ AudioEngine::AudioEngine(ITrackDataProvider* provider)
     timelineTransport = std::make_unique<TimelineTransport>(*timelineData);
     timelineRenderer = std::make_unique<TimelineRenderer>(*timelineData, *timelineTransport);
     recordingManager = std::make_unique<RecordingManager>(*timelineData);
+    timelinePlayHead = std::make_unique<TimelinePlayHead>(*timelineData, *timelineTransport);
 }
 
 AudioEngine::AudioEngine(ITrackDataProvider* provider, PlaybackController* controller)
@@ -29,6 +35,11 @@ AudioEngine::AudioEngine(ITrackDataProvider* provider, PlaybackController* contr
     timelineTransport = std::make_unique<TimelineTransport>(*timelineData);
     timelineRenderer = std::make_unique<TimelineRenderer>(*timelineData, *timelineTransport);
     recordingManager = std::make_unique<RecordingManager>(*timelineData);
+    timelinePlayHead = std::make_unique<TimelinePlayHead>(*timelineData, *timelineTransport);
+
+
+    // Initialize Audio Routing Graph for VST hosting
+    audioRoutingGraph = std::make_unique<AudioRoutingGraph>();
 }
 
 AudioEngine::~AudioEngine() = default;
@@ -91,184 +102,260 @@ void AudioEngine::prepareToPlay(int samplesPerBlockExpected, double newSampleRat
     // Prepare Timeline renderer
     timelineRenderer->prepareToPlay(newSampleRate, safeBufferSize);
     timelineRenderer->setWavetableEngine(&wavetableEngine);
+
+    // Update PlayHead sample rate for accurate time-in-samples calculation
+    if (timelinePlayHead)
+    {
+        timelinePlayHead->setSampleRate(newSampleRate);
+    }
+
+    // Prepare Audio Routing Graph for VST hosting
+    if (audioRoutingGraph)
+    {
+        audioRoutingGraph->initialize(trackProvider, &wavetableEngine);
+        audioRoutingGraph->prepareToPlay(newSampleRate, safeBufferSize);
+
+        // Connect PlayHead to AudioRoutingGraph so plugins can sync with tempo/position
+        if (timelinePlayHead)
+        {
+            audioRoutingGraph->setPlayHead(timelinePlayHead.get());
+        }
+    }
+
+    // Phase 6.1: Prepare Plugin Loading Coordinator
+    if (pluginLoadingCoordinator)
+    {
+        pluginLoadingCoordinator->prepareToPlay(newSampleRate, safeBufferSize);
+    }
+
+    // Phase 6.3: Prepare CPU Profiler
+    if (cpuProfiler)
+    {
+        cpuProfiler->initialize();
+        cpuProfiler->setSampleRate(newSampleRate);
+        cpuProfiler->setBlockSize(safeBufferSize);
+    }
 }
 
 void AudioEngine::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill)
 {
     bufferToFill.clearActiveBufferRegion();
 
-    // Check engine mode and route accordingly
-    if (engineMode.load() == EngineMode::Timeline)
+    // === Phase 6.3: CPU Profiling - Start Global Measure ===
+    if (cpuProfiler)
     {
-        // Timeline/DAW mode
-        timelineRenderer->processBlock(*bufferToFill.buffer, wavetableMidiBuffer);
-
-        // Handle recording if active
-        if (recordingManager->isRecording())
-        {
-            // Note: For recording, we'd need input buffer from AudioDeviceManager
-            // This is a simplified version - full implementation would capture input
-        }
-
-        applyMasterReverb(*bufferToFill.buffer);
-        return;
+        cpuProfiler->startMeasure(ProfilingComponent::GlobalEngine);
     }
 
-    // Step Sequencer mode (original logic)
+    // === Unified Timeline Architecture ===
+    // Timeline is always active and handles:
+    // - Audio/MIDI clips on tracks
+    // - VST plugins via AudioRoutingGraph
+    // - Step sequencer patterns as track data
 
-    const int localSamplesPerStep = samplesPerStep.load();
     const bool localIsPlaying = playing.load();
-    const float swingVal = swingAmount.load();
+    const float vol = masterVolume.load();
 
-    // Clear pre-allocated MIDI buffers (no heap allocation!)
+    // Clear pre-allocated MIDI buffers
     for (int i = 0; i < numTracks; ++i)
         trackMidiBuffers[i].clear();
+    wavetableMidiBuffer.clear();
 
-    if (localIsPlaying && localSamplesPerStep > 0)
+    // === Step 1: Generate MIDI from Step Sequencer Patterns ===
+    // This will be moved to StepSequencerClip in Phase 2.2
+    if (localIsPlaying)
     {
-        const int swingOffsetSamples = (int)(localSamplesPerStep * swingVal);
-
-        const uint64_t startSamplePos = samplePosition.load();
-        const uint64_t endSamplePos = startSamplePos + bufferToFill.numSamples;
-
-        // Process each track with its OWN loop length for polyrhythms
-        for (int trackIdx = 0; trackIdx < numTracks; ++trackIdx)
-        {
-            // PER-TRACK loop length for polyrhythms
-            const int trackLoopLen = trackProvider->getTrackLoopLength(trackIdx);
-
-            // Iterate through steps in this buffer
-            for (uint64_t samplePos = startSamplePos; samplePos < endSamplePos; )
-            {
-                // Calculate step based on THIS track's loop length
-                const int currentStep = (int)(samplePos / localSamplesPerStep) % trackLoopLen;
-                const int nextStepBoundary = ((int)(samplePos / localSamplesPerStep) + 1) * localSamplesPerStep;
-                const int samplesUntilNextStep = (int)juce::jmin((uint64_t)nextStepBoundary - samplePos, endSamplePos - samplePos);
-
-                if (trackProvider->isStepActive(trackIdx, currentStep))
-                {
-                    const StepModifierState stepState = trackProvider->getStepState(trackIdx, currentStep);
-
-                    // P-Lock: Use locked values if available, otherwise use track defaults
-                    const float trackVolume = trackProvider->getVolume(trackIdx);
-                    const int trackPitch = trackProvider->getPitch(trackIdx);
-                    const float finalVolume = stepState.hasVolLock ? stepState.volLock : trackVolume;
-                    const int finalPitch = stepState.hasPitchLock ? stepState.pitchLock : trackPitch;
-
-                    const juce::uint8 velocity = static_cast<juce::uint8>(finalVolume * 127);
-                    const int midiNote = 60 + finalPitch;
-
-                    const bool stepChanged = (currentStep != trackLastStep[trackIdx]);
-
-                    const int sampleIndexInBuffer = (int)(samplePos - startSamplePos);
-
-                    // Apply swing offset for odd steps
-                    int eventIndex = sampleIndexInBuffer;
-                    if (currentStep % 2 != 0 && swingVal > 0.0f)
-                    {
-                        eventIndex = juce::jmin(sampleIndexInBuffer + swingOffsetSamples, bufferToFill.numSamples - 1);
-                    }
-
-                    if (stepChanged)
-                    {
-                        bool shouldTrigger = false;
-
-                        if (stepState.modifierType == '/')
-                        {
-                            // Slow modifier - trigger every Nth loop
-                            if (globalLoopCounter % stepState.modifierValue == 0)
-                                shouldTrigger = true;
-                        }
-                        else if (stepState.modifierType == '?')
-                        {
-                            // Probability modifier - use fast LCG-based RNG
-                            int roll = probabilityRng.nextInt(100);
-                            if (roll <= stepState.modifierValue)
-                                shouldTrigger = true;
-                        }
-                        else
-                        {
-                            shouldTrigger = true;
-                        }
-
-                        if (shouldTrigger)
-                        {
-                            juce::MidiMessage midiMessage = juce::MidiMessage::noteOn(1, midiNote, velocity);
-                            trackMidiBuffers[trackIdx].addEvent(midiMessage, eventIndex);
-
-                            const float gateRatio = 0.8f;
-                            const int noteOffDelay = juce::jmax(1, static_cast<int>(localSamplesPerStep * gateRatio));
-                            const int noteOffIndex = juce::jmin(eventIndex + noteOffDelay, bufferToFill.numSamples - 1);
-
-                            juce::MidiMessage noteOffMessage = juce::MidiMessage::noteOff(1, midiNote);
-                            trackMidiBuffers[trackIdx].addEvent(noteOffMessage, noteOffIndex);
-                        }
-
-                        trackLastStep[trackIdx] = currentStep;
-                    }
-
-                    // Handle ratchet (speed) modifier
-                    if (stepState.modifierType == '*' && localSamplesPerStep > 0)
-                    {
-                        const int samplesPerRatchet = localSamplesPerStep / stepState.modifierValue;
-                        const int currentRatchet = (int)((samplePos % localSamplesPerStep) / samplesPerRatchet);
-
-                        if (currentRatchet != trackLastRatchet[trackIdx] && currentRatchet > 0)
-                        {
-                            const int ratchetSampleIndex = (int)(samplePos - startSamplePos);
-                            int ratchetEventIndex = ratchetSampleIndex;
-                            if (currentStep % 2 != 0 && swingVal > 0.0f)
-                            {
-                                ratchetEventIndex = juce::jmin(ratchetSampleIndex + swingOffsetSamples, bufferToFill.numSamples - 1);
-                            }
-
-                            juce::MidiMessage midiMessage = juce::MidiMessage::noteOn(1, midiNote, velocity);
-                            trackMidiBuffers[trackIdx].addEvent(midiMessage, ratchetEventIndex);
-
-                            const int ratchetGateTime = juce::jmax(1, samplesPerRatchet / 2);
-                            const int ratchetNoteOffIndex = juce::jmin(ratchetEventIndex + ratchetGateTime, bufferToFill.numSamples - 1);
-                            juce::MidiMessage ratchetNoteOffMessage = juce::MidiMessage::noteOff(1, midiNote);
-                            trackMidiBuffers[trackIdx].addEvent(ratchetNoteOffMessage, ratchetNoteOffIndex);
-                        }
-                        trackLastRatchet[trackIdx] = currentRatchet;
-                    }
-                }
-
-                samplePos += samplesUntilNextStep;
-            }
-        }
-
-        // Update global sample position
-        samplePosition.store(endSamplePos);
-
-        // Update PlaybackController if available
-        if (playbackController)
-        {
-            playbackController->setSamplePosition(endSamplePos);
-        }
-
-        // Update global loop counter
-        const int globalLoopLen = loopLength.load();
-        const uint64_t globalStep = endSamplePos / localSamplesPerStep;
-        if (globalStep / globalLoopLen > lastGlobalLoopCheck)
-        {
-            globalLoopCounter++;
-            lastGlobalLoopCheck = globalStep / globalLoopLen;
-        }
+        generateStepSequencerMidi(bufferToFill.numSamples);
     }
 
+    // === Step 2: Render Timeline Clips ===
+    // Process timeline clips (audio/MIDI) if transport is playing
+    if (localIsPlaying && timelineTransport->isPlaying())
+    {
+        timelineRenderer->processBlock(*bufferToFill.buffer, wavetableMidiBuffer);
+    }
+
+    // === Step 3: Render and Mix Tracks ===
+    // Mix step sequencer tracks with timeline content
     renderAndMixTracks(bufferToFill, trackMidiBuffers);
+
+    // === Step 4: Process VST Plugin Graph ===
+    if (audioRoutingGraph && audioRoutingGraph->isInitialized())
+    {
+        juce::MidiBuffer emptyMidi;
+        audioRoutingGraph->processBlock(*bufferToFill.buffer, emptyMidi);
+    }
+
+    // === Phase 6.1: Process Pending Plugin Loads (Lock-Free) ===
+    // This safely transfers plugins from background thread to audio thread
+    if (pluginLoadingCoordinator)
+    {
+        pluginLoadingCoordinator->processPendingLoads();
+    }
+
+    // === Step 5: Apply Master Effects ===
     applyMasterReverb(*bufferToFill.buffer);
 
-    // === Update Timeline Playhead for visual sync ===
-    // This keeps the timeline playhead in sync with the step sequencer playback
+    // === Step 6: Update Playhead ===
     if (localIsPlaying && timelineData != nullptr)
     {
-        const double bpm = timelineData->getBPM();
-        const double beatsPerSecond = bpm / 60.0;
+        const double currentBpm = timelineData->getBPM();
+        const double beatsPerSecond = currentBpm / 60.0;
         const double samplesPerBeatVal = currentSampleRate / beatsPerSecond;
         const double currentBeat = static_cast<double>(samplePosition.load()) / samplesPerBeatVal;
         timelineData->playheadBeat.store(currentBeat);
+
+        // Also update TrackManager for automation access
+        if (trackProvider)
+        {
+            trackProvider->setPlayheadBeat(currentBeat);
+        }
+    }
+
+    // === Phase 6.3: CPU Profiling - End Global Measure ===
+    if (cpuProfiler)
+    {
+        cpuProfiler->endMeasure(ProfilingComponent::GlobalEngine);
+    }
+}
+
+void AudioEngine::generateStepSequencerMidi(int numSamples)
+{
+    // Step Sequencer Pattern Generation (will become StepSequencerClip in Phase 2.2)
+    const int localSamplesPerStep = samplesPerStep.load();
+    const float swingVal = swingAmount.load();
+
+    if (localSamplesPerStep <= 0)
+        return;
+
+    const int swingOffsetSamples = static_cast<int>(localSamplesPerStep * swingVal);
+
+    const uint64_t startSamplePos = samplePosition.load();
+    const uint64_t endSamplePos = startSamplePos + numSamples;
+
+    // Process each track with its OWN loop length for polyrhythms
+    for (int trackIdx = 0; trackIdx < numTracks; ++trackIdx)
+    {
+        // PER-TRACK loop length for polyrhythms
+        const int trackLoopLen = trackProvider->getTrackLoopLength(trackIdx);
+
+        // Iterate through steps in this buffer
+        for (uint64_t samplePos = startSamplePos; samplePos < endSamplePos; )
+        {
+            // Calculate step based on THIS track's loop length
+            const int currentStep = static_cast<int>((samplePos / localSamplesPerStep) % trackLoopLen);
+            const int nextStepBoundary = static_cast<int>((static_cast<int>(samplePos / localSamplesPerStep) + 1) * localSamplesPerStep);
+            const int samplesUntilNextStep = static_cast<int>(juce::jmin(static_cast<uint64_t>(nextStepBoundary) - samplePos, endSamplePos - samplePos));
+
+            if (trackProvider->isStepActive(trackIdx, currentStep))
+            {
+                const StepModifierState stepState = trackProvider->getStepState(trackIdx, currentStep);
+
+                // P-Lock: Use locked values if available, otherwise use track defaults
+                const float trackVolume = trackProvider->getVolume(trackIdx);
+                const int trackPitch = trackProvider->getPitch(trackIdx);
+                const float finalVolume = stepState.hasVolLock ? stepState.volLock : trackVolume;
+                const int finalPitch = stepState.hasPitchLock ? stepState.pitchLock : trackPitch;
+
+                const juce::uint8 velocity = static_cast<juce::uint8>(finalVolume * 127);
+                const int midiNote = 60 + finalPitch;
+
+                const bool stepChanged = (currentStep != trackLastStep[trackIdx]);
+
+                const int sampleIndexInBuffer = static_cast<int>(samplePos - startSamplePos);
+
+                // Apply swing offset for odd steps
+                int eventIndex = sampleIndexInBuffer;
+                if (currentStep % 2 != 0 && swingVal > 0.0f)
+                {
+                    eventIndex = juce::jmin(sampleIndexInBuffer + swingOffsetSamples, numSamples - 1);
+                }
+
+                if (stepChanged)
+                {
+                    bool shouldTrigger = false;
+
+                    if (stepState.modifierType == '/')
+                    {
+                        // Slow modifier - trigger every Nth loop
+                        if (globalLoopCounter % stepState.modifierValue == 0)
+                            shouldTrigger = true;
+                    }
+                    else if (stepState.modifierType == '?')
+                    {
+                        // Probability modifier - use fast LCG-based RNG
+                        int roll = probabilityRng.nextInt(100);
+                        if (roll <= stepState.modifierValue)
+                            shouldTrigger = true;
+                    }
+                    else
+                    {
+                        shouldTrigger = true;
+                    }
+
+                    if (shouldTrigger)
+                    {
+                        juce::MidiMessage midiMessage = juce::MidiMessage::noteOn(1, midiNote, velocity);
+                        trackMidiBuffers[trackIdx].addEvent(midiMessage, eventIndex);
+
+                        const float gateRatio = 0.8f;
+                        const int noteOffDelay = juce::jmax(1, static_cast<int>(localSamplesPerStep * gateRatio));
+                        const int noteOffIndex = juce::jmin(eventIndex + noteOffDelay, numSamples - 1);
+
+                        juce::MidiMessage noteOffMessage = juce::MidiMessage::noteOff(1, midiNote);
+                        trackMidiBuffers[trackIdx].addEvent(noteOffMessage, noteOffIndex);
+                    }
+
+                    trackLastStep[trackIdx] = currentStep;
+                }
+
+                // Handle ratchet (speed) modifier
+                if (stepState.modifierType == '*' && localSamplesPerStep > 0)
+                {
+                    const int samplesPerRatchet = localSamplesPerStep / stepState.modifierValue;
+                    const int currentRatchet = static_cast<int>((samplePos % localSamplesPerStep) / samplesPerRatchet);
+
+                    if (currentRatchet != trackLastRatchet[trackIdx] && currentRatchet > 0)
+                    {
+                        const int ratchetSampleIndex = static_cast<int>(samplePos - startSamplePos);
+                        int ratchetEventIndex = ratchetSampleIndex;
+                        if (currentStep % 2 != 0 && swingVal > 0.0f)
+                        {
+                            ratchetEventIndex = juce::jmin(ratchetSampleIndex + swingOffsetSamples, numSamples - 1);
+                        }
+
+                        juce::MidiMessage midiMessage = juce::MidiMessage::noteOn(1, midiNote, velocity);
+                        trackMidiBuffers[trackIdx].addEvent(midiMessage, ratchetEventIndex);
+
+                        const int ratchetGateTime = juce::jmax(1, samplesPerRatchet / 2);
+                        const int ratchetNoteOffIndex = juce::jmin(ratchetEventIndex + ratchetGateTime, numSamples - 1);
+                        juce::MidiMessage ratchetNoteOffMessage = juce::MidiMessage::noteOff(1, midiNote);
+                        trackMidiBuffers[trackIdx].addEvent(ratchetNoteOffMessage, ratchetNoteOffIndex);
+                    }
+                    trackLastRatchet[trackIdx] = currentRatchet;
+                }
+            }
+
+            samplePos += samplesUntilNextStep;
+        }
+    }
+
+    // Update global sample position
+    samplePosition.store(endSamplePos);
+
+    // Update PlaybackController if available
+    if (playbackController)
+    {
+        playbackController->setSamplePosition(endSamplePos);
+    }
+
+    // Update global loop counter
+    const int globalLoopLen = loopLength.load();
+    const uint64_t globalStep = endSamplePos / localSamplesPerStep;
+    if (globalStep / globalLoopLen > lastGlobalLoopCheck)
+    {
+        globalLoopCounter++;
+        lastGlobalLoopCheck = globalStep / globalLoopLen;
     }
 }
 
@@ -284,6 +371,12 @@ void AudioEngine::releaseResources()
     wavetableBuffer.reset();
     wavetableMidiBuffer.clear();
     wavetableEngine.releaseResources();
+
+    // Phase 6.1: Release plugin loading coordinator resources
+    if (pluginLoadingCoordinator)
+    {
+        pluginLoadingCoordinator->releaseResources();
+    }
 }
 
 void AudioEngine::startPlayback()
@@ -362,6 +455,10 @@ void AudioEngine::setBPM(double newBpm)
     bpm.store(newBpm);
     calculateSamplesPerStep();
     wavetableEngine.setBPM(static_cast<float>(newBpm));
+
+    // Sync with Timeline
+    if (timelineData)
+        timelineData->setBPM(newBpm);
 
     if (playbackController)
         playbackController->setBPM(newBpm);
@@ -567,18 +664,7 @@ void AudioEngine::applyMasterReverb(juce::AudioBuffer<float>& buffer)
     }
 }
 
-// === Timeline Mode ===
-
-void AudioEngine::setEngineMode(EngineMode mode)
-{
-    engineMode.store(mode);
-
-    if (mode == EngineMode::Timeline)
-    {
-        // Sync BPM to timeline
-        timelineData->setBPM(bpm.load());
-    }
-}
+// === Timeline (always active) ===
 
 TimelineData& AudioEngine::getTimelineData()
 {
@@ -603,4 +689,37 @@ TimelineRenderer& AudioEngine::getTimelineRenderer()
 RecordingManager& AudioEngine::getRecordingManager()
 {
     return *recordingManager;
+}
+
+TimelinePlayHead& AudioEngine::getTimelinePlayHead()
+{
+    return *timelinePlayHead;
+}
+
+const TimelinePlayHead& AudioEngine::getTimelinePlayHead() const
+{
+    return *timelinePlayHead;
+}
+
+void AudioEngine::setVSTPluginManager(VSTPluginManager* manager)
+{
+    vstPluginManager = manager;
+}
+
+void AudioEngine::setPluginLoadingCoordinator(PluginLoadingCoordinator* coordinator)
+{
+    // Create plugin loading coordinator if provided
+    if (coordinator && !pluginLoadingCoordinator)
+    {
+        pluginLoadingCoordinator = std::unique_ptr<PluginLoadingCoordinator>(coordinator);
+        pluginLoadingCoordinator->initialize();
+    }
+}
+
+void AudioEngine::setCPUProfiler(CPUProfiler* profiler)
+{
+    if (profiler && !cpuProfiler)
+    {
+        cpuProfiler = std::unique_ptr<CPUProfiler>(profiler);
+    }
 }

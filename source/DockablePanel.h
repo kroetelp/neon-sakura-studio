@@ -14,6 +14,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <memory>
 #include <functional>
+#include "Theme/ThemeManager.h"
 
 // Forward declarations
 class DockingManager;

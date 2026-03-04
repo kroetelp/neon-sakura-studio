@@ -203,8 +203,3 @@ std::unique_ptr<juce::DocumentWindow> PanelManager::createDocumentWindow(const j
 
     return window;
 }
-
-juce::Colour PanelManager::getDarkBackground()
-{
-    return juce::Colour(15, 15, 25);
-}

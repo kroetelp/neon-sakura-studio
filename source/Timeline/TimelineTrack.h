@@ -1,6 +1,7 @@
 #pragma once
 
 #include "TimelineClip.h"
+#include "AutomationLane.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_core/juce_core.h>
 #include <vector>
@@ -11,7 +12,7 @@
 class TimelineTrack
 {
 public:
-    TimelineTrack(int index) : trackIndex(index) {}
+    TimelineTrack(int index) : trackIndex(index), automationManager(std::make_unique<AutomationManager>()) {}
 
     // Identity
     int getTrackIndex() const { return trackIndex; }
@@ -22,7 +23,6 @@ public:
     std::atomic<bool> muted{false};
     std::atomic<bool> soloed{false};
     std::atomic<bool> armed{false};         // For recording
-
     juce::String name{"Track"};
 
     // Clip management (thread-safe)
@@ -67,15 +67,14 @@ public:
         return nullptr;
     }
 
-    // Get all clips (for rendering) - returns copy for thread safety
-    std::vector<TimelineClip*> getClipsAtBeat(double beat)
+    // Get all clips (for rendering/minimap)
+    std::vector<TimelineClip*> getClips() const
     {
         std::lock_guard<std::mutex> lock(trackMutex);
         std::vector<TimelineClip*> result;
-        for (auto& clip : clips)
+        for (const auto& clip : clips)
         {
-            if (clip->containsBeat(beat))
-                result.push_back(clip.get());
+            result.push_back(clip.get());
         }
         return result;
     }
@@ -112,9 +111,26 @@ public:
         return endBeat;
     }
 
+    // === Automation ===
+    /** Get automation manager for this track */
+    AutomationManager* getAutomationManager() { return automationManager.get(); }
+    const AutomationManager* getAutomationManager() const { return automationManager.get(); }
+
+    /**
+     * Process automation for current playhead position.
+     * Returns map of parameter IDs to values.
+     */
+    std::unordered_map<juce::String, float> processAutomation(double currentBeat)
+    {
+        if (automationManager)
+            return automationManager->processAutomation(currentBeat);
+        return {};
+    }
+
 private:
     int trackIndex;
     std::vector<std::unique_ptr<TimelineClip>> clips;
+    std::unique_ptr<AutomationManager> automationManager;
     mutable std::mutex trackMutex;
 
     void sortClips()

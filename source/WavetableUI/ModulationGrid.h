@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "../Modulation/ModulationSource.h"
 #include "../Modulation/ModulationMatrix.h"
+#include "../Theme/ThemeManager.h"
 #include <vector>
 #include <atomic>
 
@@ -67,12 +68,12 @@ private:
     bool liveFeedbackEnabled = false;
     float animationPhase = 0.0f;  // For pulsing animation (0.0 - 1.0)
 
-    // Colors
-    static juce::Colour getNeonPink() { return juce::Colour(255, 20, 147); }
-    static juce::Colour getNeonCyan() { return juce::Colour(0, 255, 255); }
-    static juce::Colour getNeonPurple() { return juce::Colour(180, 0, 255); }
-    static juce::Colour getNeonGreen() { return juce::Colour(0, 255, 128); }
-    static juce::Colour getPanelBackground() { return juce::Colour(25, 25, 40); }
+    // Colors (delegated to ThemeManager)
+    static juce::Colour getNeonPink() { return ThemeManager::getInstance().getAccentColor(); }
+    static juce::Colour getNeonCyan() { return ThemeManager::getInstance().getInfoColor(); }
+    static juce::Colour getNeonPurple() { return ThemeManager::getInstance().getAccentColor().withHue(0.8f); }
+    static juce::Colour getNeonGreen() { return ThemeManager::getInstance().getSuccessColor(); }
+    static juce::Colour getPanelBackground() { return ThemeManager::getInstance().getPanelBackgroundColor(); }
 
     void buildGrid();
     Cell* getCellAtPosition(const juce::Point<int>& pos);

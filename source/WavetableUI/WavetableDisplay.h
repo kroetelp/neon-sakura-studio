@@ -4,6 +4,7 @@
 #include "../WavetableSynth/WavetableVoice.h"
 #include "../WavetableSynth/WavetableData.h"
 #include "../WavetableSynth/WavetableParams.h"
+#include "../Theme/ThemeManager.h"
 #include "melatonin_blur.h"
 #include <memory>
 
@@ -87,12 +88,12 @@ private:
     juce::Path createWaveformPath(const juce::Rectangle<float>& bounds);
     void drawGrid(juce::Graphics& g, const juce::Rectangle<int>& bounds);
 
-    // Colors
-    static juce::Colour getNeonPink() { return juce::Colour(255, 20, 147); }
-    static juce::Colour getNeonCyan() { return juce::Colour(0, 255, 255); }
-    static juce::Colour getNeonPurple() { return juce::Colour(180, 0, 255); }
-    static juce::Colour getNeonGreen() { return juce::Colour(0, 255, 128); }
-    static juce::Colour getNeonOrange() { return juce::Colour(255, 165, 0); }
-    static juce::Colour getDarkBackground() { return juce::Colour(15, 15, 25); }
-    static juce::Colour getPanelBackground() { return juce::Colour(25, 25, 40); }
+    // Colors (delegated to ThemeManager)
+    static juce::Colour getNeonPink() { return ThemeManager::getInstance().getAccentColor(); }
+    static juce::Colour getNeonCyan() { return ThemeManager::getInstance().getInfoColor(); }
+    static juce::Colour getNeonPurple() { return ThemeManager::getInstance().getAccentColor().withHue(0.8f); }
+    static juce::Colour getNeonGreen() { return ThemeManager::getInstance().getSuccessColor(); }
+    static juce::Colour getNeonOrange() { return ThemeManager::getInstance().getWarningColor(); }
+    static juce::Colour getDarkBackground() { return ThemeManager::getInstance().getBackgroundColor(); }
+    static juce::Colour getPanelBackground() { return ThemeManager::getInstance().getPanelBackgroundColor(); }
 };

@@ -4,10 +4,13 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg)](https://github.com/kroetelp/Neon-Sakura-Studio)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-orange.svg)](https://en.cppreference.com/w/cpp/20)
 [![JUCE](https://img.shields.io/badge/JUCE-8.0.4-green.svg)](https://juce.com/)
+[![VST3 Hosting](https://img.shields.io/badge/VST3-Hosting-enabled-brightgreen.svg)](https://juce.com/)
+[![AU Hosting](https://img.shields.io/badge/AU-Hosting-enabled-blue.svg)](https://juce.com/)
+[![LV2 Support](https://img.shields.io/badge/LV2-Support-enabled-blue.svg)](https://juce.com/)
 
-**A modern, JUCE-based drum sequencer and wavetable synthesizer with a stunning cyberpunk neon aesthetic.**
+**A modern, JUCE-based Digital Audio Workstation (DAW) with drum sequencing, wavetable synthesis, and VST3/AU plugin hosting - all wrapped in a stunning cyberpunk neon aesthetic.**
 
-> **Keywords:** drum sequencer, wavetable synthesizer, DAW, music production, JUCE, C++20, audio plugin, MIDI, pattern generator, electronic music, techno, house, trap, drum and bass, ambient
+> **Keywords:** DAW, drum sequencer, wavetable synthesizer, VST3 hosting, music production, JUCE, C++20, audio plugin, MIDI, pattern generator, electronic music, techno, house, trap, drum and bass, ambient
 
 ![NeonSakuraStudio Screenshot](screenshots/sequencer.png)
 
@@ -24,8 +27,23 @@
 
 ## Features
 
-### Drum Sequencer
+### 🎹 Full DAW Functionality
+- **Timeline-based Multi-Track Editing** - Professional DAW workflow with tracks, clips, and automation
 - **8-Track Drum Sequencer** with 64 steps per track
+- **Three View Modes** - Track View, Pattern Grid View, and Timeline View
+- **Audio Recording** - Record audio directly to tracks
+- **Pattern-to-Clip Conversion** - Seamless workflow between pattern and timeline modes
+
+### 🎛️ VST3/AU Plugin Hosting ⭐ NEW
+- **Full VST3 Plugin Support** - Load and host third-party VST3 instruments and effects
+- **AU Plugin Support** (macOS) - Native Audio Unit hosting
+- **LV2 Support** (Linux) - Open-source plugin format
+- **Plugin Browser** - Easy plugin discovery and management
+- **Plugin Scanner** - Automatic plugin detection at startup
+- **Plugin Windows** - Native plugin UI integration
+- **Plugin Parameters** - Full parameter automation support
+
+### 🥁 Drum Sequencer
 - **Genre-based Pattern Generation** - Techno, House, Trap, DnB, Ambient, Garage
 - **Euclidean Rhythms** for organic, polyrhythmic patterns
 - **Melody Generator** with scales, arpeggios, and chord progressions
@@ -34,10 +52,12 @@
 - **Step Modifiers** - Gain, Pitch, Pan, Ratchet, Reverb, Delay, Filter per step
 - **Sample Management** with category-based loading
 
-### Wavetable Synthesizer
+### 🎹 Wavetable Synthesizer
 - **3 Wavetable Oscillators** with frame morphing and unison
 - **Sub Oscillator** with multiple waveforms
 - **Wavetable Import** - Load your own WAV files or Serum-compatible wavetables
+- **Waveshaper** - Add harmonics and saturation
+- **FM/AM Modulation** - Complex sound design possibilities
 - **Modulation System:**
   - 4 LFOs with various waveforms and tempo sync
   - 3 ADSR envelopes
@@ -47,18 +67,22 @@
 - **Real-time Visualization** of wavetable waveforms
 - **Oscilloscope** for audio output monitoring
 
-### Hardware Integration
-- **Wooting Analog Keyboard Support** - Use your Wooting keyboard as an expressive MIDI controller with analog velocity
-  - Powered by [Wooting Analog SDK](https://github.com/WootingKb/wooting-analog-sdk/)
-  - Full analog key pressure sensitivity
-  - Aftertouch and modulation support
-
-### User Interface
+### 🎨 Professional UI System
+- **Unified Sequencer Panel** with Track/Pattern/Timeline views
+- **Docking System** - Flexible panel management with dock/float options
+- **Theme Manager** - Switch between multiple visual themes
+- **Workspace Management** - Save and restore complete UI layouts
 - **Neon-inspired Cyberpunk UI** with custom designed aesthetics
 - **Serum-inspired Synth Layout** for intuitive sound design
 - **NeonSakuraLookAndFeel** - Custom LookAndFeel for consistent design
 - **Responsive Panels** for different workflow zones
 - **Real-time Visualizations** and animated elements
+
+### 🖥️ Hardware Integration
+- **Wooting Analog Keyboard Support** - Use your Wooting keyboard as an expressive MIDI controller with analog velocity
+  - Powered by [Wooting Analog SDK](https://github.com/WootingKb/wooting-analog-sdk/)
+  - Full analog key pressure sensitivity
+  - Aftertouch and modulation support
 
 ---
 
@@ -119,63 +143,105 @@ The executable will be located at:
 source/
 ├── Main.cpp                    # Application Entry Point
 ├── MainComponent.h/cpp         # Main GUI and Audio Setup
-├── WootingManager.h            # Wooting Analog Keyboard Integration
 │
-├── Audio/
-│   ├── AudioEngine.h/cpp       # Audio Processing and Playback
-│   ├── TrackAudioProcessor.h/cpp # Per-track Audio Processing
-│   ├── SampleManager.h/cpp     # Sample Management
-│   └── PlaybackController.h/cpp # Playback Control
+├── Sequencer/                 # Multi-Mode Sequencer ⭐ NEW
+│   ├── UnifiedSequencerModel.h/cpp    # Shared data model
+│   ├── UnifiedSequencerPanel.h/cpp    # Main panel with mode tabs
+│   ├── TrackViewComponent.h/cpp       # Track-based view
+│   ├── PatternViewComponent.h/cpp     # Pattern grid view
+│   └── TimelineViewComponent.h/cpp    # Timeline DAW view
 │
-├── Core/
-│   ├── TrackModel.h/cpp        # Track Data Model
-│   ├── TrackManager.h/cpp      # Track Management
-│   ├── TrackType.h             # Track Type Definitions
-│   ├── PanelManager.h/cpp      # Panel Management
-│   └── ITrackDataProvider.h    # Interface for Track Data
+├── VSTHost/                  # VST3/AU Plugin Hosting ⭐ NEW
+│   ├── VSTPluginManager.h/cpp         # Plugin management
+│   ├── PluginScanner.h/cpp             # Plugin discovery
+│   ├── PluginInstance.h/cpp            # Plugin wrapper
+│   ├── PluginWindow.h/cpp              # Plugin UI window
+│   ├── PluginBrowserComponent.h/cpp     # Plugin browser UI
+│   └── PluginLoadingCoordinator.h/cpp  # Async plugin loading
 │
-├── Sequencer/
-│   ├── PatternGenerator.h/cpp  # Genre-based Pattern Generation
-│   ├── RhythmExplorer.h/cpp    # Rhythmic Exploration UI
-│   ├── MusicTheory.h/cpp       # Scales, Chords, Progressions
-│   ├── MelodyGenerator.h/cpp   # Melodic Pattern Generation
-│   └── MelodyPanel.h/cpp       # Melody Workstation UI
+├── AudioRouting/              # Audio Processing Graph ⭐ NEW
+│   ├── AudioRoutingGraph.h/cpp         # Main routing graph
+│   ├── TrackProcessor.h/cpp             # Per-track processing
+│   ├── MasterOutputProcessor.h/cpp      # Master bus
+│   ├── SidechainManager.h/cpp          # Sidechain routing
+│   ├── MIDIOutputHandler.h/cpp         # MIDI routing
+│   └── PluginParameterAutomation.h/cpp  # Automation support
+│
+├── InternalSynth/             # Native Wavetable Synth ⭐ NEW
+│   ├── InternalSynthProcessor.h/cpp      # Audio processor
+│   └── InternalSynthEditor.h/cpp        # Synth UI
+│
+├── Theme/                    # Theme System ⭐ NEW
+│   ├── ThemeManager.h/cpp                # Theme management
+│   ├── ProfessionalTheme.h              # Color schemes
+│   ├── WorkspaceManager.h/cpp           # UI state
+│   └── WorkspacePreset.h/cpp           # Preset layouts
+│
+├── UI/                       # UI Components ⭐ NEW
+│   ├── TransportBar.h/cpp               # Playback controls
+│   ├── GlobalControlsBar.h/cpp          # Global settings
+│   ├── TrackToolsBar.h/cpp             # Track tools
+│   └── PanelTogglesBar.h/cpp          # Panel visibility
+│
+├── Timeline/                  # Timeline Features
+│   ├── TimelineClip.h/cpp              # Clip data structure
+│   ├── TimelineData.h/cpp              # Timeline state
+│   ├── TimelineRenderer.h/cpp          # Visual rendering
+│   ├── TimelinePanel.h/cpp             # Timeline UI
+│   ├── TimelineViewport.h/cpp           # Scrollable viewport ⭐ NEW
+│   ├── TimelinePlayHead.h/cpp          # Playhead visualization ⭐ NEW
+│   ├── AutomationClip.h/cpp            # Automation data ⭐ NEW
+│   ├── AutomationLane.h/cpp            # Automation UI ⭐ NEW
+│   └── RecordingManager.h/cpp         # Audio recording
+│
+├── StepSequencer/            # Step Sequencer
+│   ├── StepSequencerPanel.h/cpp       # Main UI
+│   ├── StepSequencerClip.h/cpp        # Clip data ⭐ NEW
+│   └── NeonStepButton.h/cpp           # Custom step button
 │
 ├── WavetableSynth/             # Wavetable Synthesizer Engine
-│   ├── WavetableData.h/cpp     # Wavetable Data and Loading
-│   ├── WavetableOscillator.h/cpp # Oscillator with Unison/Morphing
-│   ├── SubOscillator.h/cpp     # Sub Oscillator
-│   ├── WavetableFilter.h/cpp   # Filter Implementation
-│   ├── WavetableVoice.h/cpp    # Voice with Filter/Envelope
-│   ├── WavetableSynth.h/cpp    # Synthesiser with Voices
-│   ├── WavetableEngine.h/cpp   # Standalone Engine
-│   ├── WavetableParams.h/cpp   # Thread-safe Parameters
-│   ├── WavetablePreset.h       # Preset Data Structure
-│   └── WavetablePresetManager.h/cpp # Preset Management
+│   ├── WavetableData.h/cpp             # Wavetable data
+│   ├── WavetableOscillator.h/cpp       # Oscillator
+│   ├── SubOscillator.h/cpp             # Sub oscillator
+│   ├── WavetableFilter.h/cpp           # Filter
+│   ├── Waveshaper.h/cpp              # Waveshaper
+│   ├── WavetableVoice.h/cpp            # Voice
+│   ├── WavetableSynth.h/cpp           # Synthesiser
+│   ├── WavetableEngine.h/cpp           # Standalone engine
+│   ├── WavetableParams.h/cpp           # Parameters
+│   ├── WavetablePreset.h              # Preset data
+│   └── WavetablePresetManager.h/cpp   # Preset management
 │
-├── WavetableUI/                # Synthesizer UI
-│   ├── WavetableSynthEditor.h/cpp # Main Editor
-│   ├── WavetableDisplay.h/cpp  # Wavetable Visualization
-│   ├── OscillatorSection.h/cpp # Oscillator Controls
-│   ├── FilterSection.h/cpp     # Filter Controls
-│   ├── EnvelopeSection.h/cpp   # Envelope Controls
-│   ├── ModulationGrid.h/cpp    # Modulation Matrix UI
-│   ├── Oscilloscope.h/cpp      # Audio Visualization
-│   └── NeonSakuraLookAndFeel   # Custom LookAndFeel
+├── WavetableUI/               # Synthesizer UI
+│   ├── WavetableSynthEditor.h/cpp     # Main editor
+│   ├── WavetableDisplay.h/cpp        # Visualization
+│   ├── OscillatorSection.h/cpp        # Oscillator controls
+│   ├── FilterSection.h/cpp            # Filter controls
+│   ├── ShaperSection.h/cpp            # Waveshaper controls ⭐ NEW
+│   ├── EnvelopeSection.h/cpp          # Envelope controls
+│   ├── ModulationSection.h/cpp        # Modulation UI
+│   ├── FXSection.h/cpp               # Effects controls
+│   ├── ModulationGrid.h/cpp           # Modulation matrix
+│   ├── Oscilloscope.h/cpp             # Audio visualization
+│   └── NeonSakuraLookAndFeel          # Custom look & feel
 │
-└── Modulation/                 # Modulation System
-    ├── ModulationMatrix.h/cpp  # Routing System
-    ├── ModulationSource.h      # Source Definitions
-    ├── Modulator.h/cpp         # Base Class
-    ├── LFOModulator.h/cpp      # LFOs
-    └── EnvelopeModulator.h/cpp # Envelopes
+├── Modulation/                # Modulation System
+│   ├── ModulationMatrix.h/cpp          # Routing
+│   ├── ModulationSource.h             # Source definitions
+│   ├── Modulator.h/cpp               # Base class
+│   ├── LFOModulator.h/cpp            # LFOs
+│   └── EnvelopeModulator.h/cpp        # Envelopes
+│
+└── MelodyPanel/               # Melody Features
+    ├── MelodyPanel.h/cpp              # Main UI
+    └── MelodyGenerator.h/cpp          # Melody generation
 ```
 
 ---
 
 ## Step Modifiers
 
-Each step in the sequencer can have the following modifiers:
+Each step in sequencer can have following modifiers:
 
 | Modifier | Key | Description |
 |----------|-----|-------------|
@@ -206,6 +272,53 @@ The wavetable synthesizer features a flexible modulation matrix:
 
 ---
 
+## VST3/AU Plugin Support
+
+Neon Sakura Studio now fully supports third-party plugins:
+
+**Features:**
+- Automatic plugin scanning on startup
+- Plugin browser with category filtering
+- Native plugin UI in floating windows
+- Parameter automation
+- MIDI plugin support
+- Multi-out plugins support
+
+**Supported Formats:**
+- **Windows:** VST3 (.vst3)
+- **macOS:** VST3 + AU
+- **Linux:** VST3 + LV2
+
+---
+
+## Roadmap
+
+### Completed ✅
+- [x] Multi-track Timeline with DAW features
+- [x] VST3/AU/LV2 plugin hosting
+- [x] Audio recording
+- [x] Unified Sequencer with multiple views
+- [x] Professional theme system
+- [x] Docking panel system
+- [x] Waveshaper synthesis
+- [x] FM/AM modulation
+
+### In Progress 🚧
+- [ ] Automation lane improvements
+- [ ] Plugin parameter automation UI
+- [ ] MIDI export/import
+- [ ] More wavetable presets
+
+### Planned 📋
+- [ ] Plugin presets management
+- [ ] Macro controls
+- [ ] Sidechain routing UI
+- [ ] Project save/load
+- [ ] Multi-output audio
+- [ ] Plugin sandboxing
+
+---
+
 ## Third-Party Libraries
 
 | Library | Purpose | License |
@@ -216,39 +329,28 @@ The wavetable synthesizer features a flexible modulation matrix:
 
 ---
 
-## Roadmap
-
-- [ ] VST3/AU Plugin Version
-- [ ] More Wavetable Presets
-- [ ] MIDI Export
-- [ ] More LFO Waveforms
-- [ ] Step Sequencer Automation
-- [ ] Multi-output Audio
-
----
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-1. Fork the repository
+1. Fork repository
 2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
 3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
+4. Push to branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
 ---
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
 ## Acknowledgments
 
 - [JUCE Framework](https://juce.com/) - Amazing audio application framework
-- [Wooting](https://wooting.io/) - For the analog keyboard technology
+- [Wooting](https://wooting.io/) - For analog keyboard technology
 - [Wooting Analog SDK](https://github.com/WootingKb/wooting-analog-sdk/) - Open source analog input SDK
 - [melatonin](https://github.com/sudara/melatonin_blur) - Beautiful blur effects for JUCE
 
@@ -262,16 +364,27 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 # Neon Sakura Studio (Deutsch)
 
-Ein moderner, JUCE-basierter Drum-Sequencer und Wavetable-Synthesizer mit integriertem Pattern-Generator, Music-Theory-Features und einem atemberaubenden Cyberpunk-Neon-Design.
-
-![NeonSakuraStudio Screenshot](screenshots/sequencer.png)
-
----
+Ein moderner, JUCE-basierter DAW mit Drum-Sequencer, Wavetable-Synthesizer und VST3/AU-Plugin-Hosting - alles in einem atemberaubenden Cyberpunk-Neon-Design.
 
 ## Features
 
-### Drum Sequencer
+### 🎹 Vollständige DAW-Funktionalität
+- **Timeline-basierte Multi-Track-Bearbeitung** - Professioneller DAW-Workflow mit Tracks, Clips und Automation
 - **8-Track Drum Sequencer** mit 64 Steps pro Track
+- **Drei Ansichts-Modi** - Track View, Pattern Grid View und Timeline View
+- **Audio-Aufnahme** - Nehme Audio direkt in Tracks auf
+- **Pattern-zu-Clip-Konvertierung** - Nahtloser Workflow zwischen Pattern- und Timeline-Modi
+
+### 🎛️ VST3/AU-Plugin-Hosting ⭐ NEU
+- **Vollständige VST3-Plugin-Unterstützung** - Lade und hoste Drittanbieter-VST3-Instrumente und -Effekte
+- **AU-Plugin-Unterstützung** (macOS) - Natives Audio Unit Hosting
+- **LV2-Support** (Linux) - Open-Source-Plugin-Format
+- **Plugin-Browser** - Einfache Plugin-Entdeckung und -Verwaltung
+- **Plugin-Scanner** - Automatische Plugin-Erkennung beim Start
+- **Plugin-Fenster** - Native Plugin-UI-Integration
+- **Plugin-Parameter** - Vollständige Parameter-Automatisierung
+
+### 🥁 Drum Sequencer
 - **Genre-basierte Pattern-Generierung** - Techno, House, Trap, DnB, Ambient, Garage
 - **Euklidische Rhythmen** für organische, polyrhythmische Patterns
 - **Melodie-Generator** mit Skalen, Arpeggios und Akkord-Fortschreitungen
@@ -280,51 +393,37 @@ Ein moderner, JUCE-basierter Drum-Sequencer und Wavetable-Synthesizer mit integr
 - **Step Modifiers** - Gain, Pitch, Pan, Ratchet, Reverb, Delay, Filter pro Step
 - **Sample-Management** mit kategoriebasiertem Laden
 
-### Wavetable Synthesizer
+### 🎹 Wavetable-Synthesizer
 - **3 Wavetable-Oszillatoren** mit Frame-Morphing und Unison
 - **Sub-Oszillator** mit verschiedenen Wellenformen
 - **Wavetable-Import** - Lade eigene WAV-Dateien oder Serum-kompatible Wavetables
+- **Waveshaper** - Füge Harmonische und Saturation hinzu
+- **FM/AM-Modulation** - Komplexe Sound-Design-Möglichkeiten
 - **Modulationssystem:**
   - 4 LFOs mit verschiedenen Wellenformen und Tempo-Sync
-  - 3 ADSR-Hüllenkurven
+  - 3 ADSR-Hüllkurven
   - Flexible Modulations-Matrix
 - **Filter-Sektion** - Lowpass, Highpass, Bandpass, Notch
 - **Preset-Management** mit Factory- und User-Presets
 - **Echtzeit-Visualisierung** der Wavetable-Wellenformen
 - **Oszilloskop** für Audio-Ausgabe
 
-### Hardware-Integration
-- **Wooting Analog Tastatur-Support** - Nutze deine Wooting-Tastatur als ausdrucksstarken MIDI-Controller mit analoger Velocity
-  - Unterstützt durch [Wooting Analog SDK](https://github.com/WootingKb/wooting-analog-sdk/)
-  - Volle analoge Tastendruck-Empfindlichkeit
-  - Aftertouch und Modulations-Unterstützung
-
-### Benutzeroberfläche
+### 🎨 Professionelles UI-System
+- **Unified Sequencer Panel** mit Track/Pattern/Timeline-Ansichten
+- **Docking-System** - Flexibles Panel-Management mit Dock/Float-Optionen
+- **Theme-Manager** - Wechsle zwischen verschiedenen visuellen Themes
+- **Workspace-Management** - Speichere und stelle vollständige UI-Layouts wieder her
 - **Neon-inspiriertes Cyberpunk-UI** mit maßgeschneidertem Design
 - **Serum-inspiriertes Synth-Layout** für intuitives Sound-Design
 - **NeonSakuraLookAndFeel** - Custom LookAndFeel für konsistentes Design
 - **Responsive Panels** für verschiedene Arbeitsbereiche
 - **Echtzeit-Visualisierungen** und animierte Elemente
 
----
-
-## Build
-
-### Windows (Visual Studio 2019/2022)
-```bash
-mkdir build && cd build
-cmake .. -G "Visual Studio 17 2022"
-cmake --build . --config Release
-```
-
-### macOS / Linux
-```bash
-mkdir build && cd build
-cmake ..
-cmake --build . --config Release
-```
-
-Die ausführbare Datei befindet sich in `build/NeonSakuraStudio_artefacts/Release/`.
+### 🖥️ Hardware-Integration
+- **Wooting Analog Tastatur-Support** - Nutze deine Wooting-Tastatur als ausdrucksstarken MIDI-Controller mit analoger Velocity
+  - Unterstützt durch [Wooting Analog SDK](https://github.com/WootingKb/wooting-analog-sdk/)
+  - Volle analoge Tastendruck-Empfindlichkeit
+  - Aftertouch und Modulations-Unterstützung
 
 ---
 

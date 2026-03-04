@@ -7,6 +7,7 @@
 #include <vector>
 #include <random>
 #include <array>
+#include "../Theme/ThemeManager.h"
 
 class TrackModel;
 
@@ -116,12 +117,13 @@ private:
 
         void paint(juce::Graphics& g) override
         {
+            auto& theme = ThemeManager::getInstance();
             auto bounds = getLocalBounds().toFloat();
             juce::Path p;
             p.addRoundedRectangle(bounds, 3);
 
-            juce::Colour neonPink = juce::Colour(255, 20, 147);
-            juce::Colour stepInactive = juce::Colour(30, 30, 45);
+            juce::Colour neonPink = theme.getAccentColor();
+            juce::Colour stepInactive = theme.getPanelBackgroundColor();
 
             if (isActive)
             {
@@ -160,13 +162,13 @@ private:
     std::array<PatternPreset, 4> drumPresets;
     std::array<PatternPreset, 3> fillPresets;
 
-    // Colors
-    juce::Colour getNeonPink() const { return juce::Colour(255, 20, 147); }
-    juce::Colour getNeonCyan() const { return juce::Colour(0, 255, 255); }
-    juce::Colour getNeonPurple() const { return juce::Colour(180, 0, 255); }
-    juce::Colour getNeonGreen() const { return juce::Colour(0, 255, 128); }
-    juce::Colour getDarkBackground() const { return juce::Colour(15, 15, 25); }
-    juce::Colour getStepInactive() const { return juce::Colour(30, 30, 45); }
+    // Colors (delegated to ThemeManager)
+    juce::Colour getNeonPink() const { return ThemeManager::getInstance().getAccentColor(); }
+    juce::Colour getNeonCyan() const { return ThemeManager::getInstance().getInfoColor(); }
+    juce::Colour getNeonPurple() const { return ThemeManager::getInstance().getAccentColor().withHue(0.8f); }
+    juce::Colour getNeonGreen() const { return ThemeManager::getInstance().getSuccessColor(); }
+    juce::Colour getDarkBackground() const { return ThemeManager::getInstance().getBackgroundColor(); }
+    juce::Colour getStepInactive() const { return ThemeManager::getInstance().getPanelBackgroundColor(); }
 
     // Initialization helpers
     void initializePresets();

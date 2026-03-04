@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
+#include "../Theme/ThemeManager.h"
 #include <memory>
 
 class WavetableParams;
@@ -56,8 +57,8 @@ private:
     // Routing diagram labels
     juce::Label routingLabel;
 
-    // Colors - Purple/Violet for modulation
-    static juce::Colour getNeonViolet() { return juce::Colour(180, 0, 255); }
-    static juce::Colour getNeonPurple() { return juce::Colour(128, 0, 255); }
-    static juce::Colour getPanelBackground() { return juce::Colour(25, 25, 40); }
+    // Colors - Purple/Violet for modulation (delegated to ThemeManager)
+    static juce::Colour getNeonViolet() { return ThemeManager::getInstance().getAccentColor().withHue(0.8f); }
+    static juce::Colour getNeonPurple() { return ThemeManager::getInstance().getAccentColor().withHue(0.75f); }
+    static juce::Colour getPanelBackground() { return ThemeManager::getInstance().getPanelBackgroundColor(); }
 };

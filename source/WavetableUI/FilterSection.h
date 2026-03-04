@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "../WavetableSynth/WavetableVoice.h"
 #include "../WavetableSynth/WavetableFilter.h"
+#include "../Theme/ThemeManager.h"
 #include <memory>
 
 class WavetableParams;
@@ -39,8 +40,8 @@ private:
     juce::Label driveLabel;
     juce::Label modeLabel;
 
-    // Colors
-    static juce::Colour getNeonCyan() { return juce::Colour(0, 255, 255); }
-    static juce::Colour getNeonOrange() { return juce::Colour(255, 165, 0); }
-    static juce::Colour getPanelBackground() { return juce::Colour(25, 25, 40); }
+    // Colors (delegated to ThemeManager)
+    static juce::Colour getNeonCyan() { return ThemeManager::getInstance().getInfoColor(); }
+    static juce::Colour getNeonOrange() { return ThemeManager::getInstance().getWarningColor(); }
+    static juce::Colour getPanelBackground() { return ThemeManager::getInstance().getPanelBackgroundColor(); }
 };

@@ -3,6 +3,7 @@
 // ============================================================================
 
 #include "DockablePanel.h"
+#include "Theme/ThemeManager.h"
 
 // ============================================================================
 // PanelHeader Implementation
@@ -11,9 +12,11 @@
 PanelHeader::PanelHeader(const juce::String& name)
     : panelName(name)
 {
+    auto& theme = ThemeManager::getInstance();
+
     // Title Label
     titleLabel.setText(panelName, juce::dontSendNotification);
-    titleLabel.setColour(juce::Label::textColourId, DockablePanel::getHeaderTextColor());
+    titleLabel.setColour(juce::Label::textColourId, theme.getTextSecondaryColor());
     titleLabel.setFont(juce::Font(14.0f, juce::Font::bold));
     titleLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(titleLabel);
@@ -28,10 +31,12 @@ PanelHeader::PanelHeader(const juce::String& name)
 
 void PanelHeader::setupButton(juce::TextButton& btn, const juce::String& tooltip)
 {
+    auto& theme = ThemeManager::getInstance();
+
     btn.setTooltip(tooltip);
     btn.setColour(juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
-    btn.setColour(juce::TextButton::textColourOffId, DockablePanel::getHeaderTextColor());
-    btn.setColour(juce::TextButton::textColourOnId, juce::Colour(0, 255, 255));  // Neon Cyan on hover
+    btn.setColour(juce::TextButton::textColourOffId, theme.getTextSecondaryColor());
+    btn.setColour(juce::TextButton::textColourOnId, theme.getInfoColor());  // Accent on hover
     btn.setColour(juce::ComboBox::outlineColourId, juce::Colours::transparentBlack);
 
     // Button Style
@@ -48,9 +53,11 @@ void PanelHeader::setupButton(juce::TextButton& btn, const juce::String& tooltip
 
 void PanelHeader::paint(juce::Graphics& g)
 {
+    auto& theme = ThemeManager::getInstance();
+
     // Header Background mit subtilem Gradient
     auto bounds = getLocalBounds();
-    auto bgColor = DockablePanel::getHeaderBackgroundColor();
+    auto bgColor = theme.getPanelHeaderColor();
     auto gradient = juce::ColourGradient::vertical(
         bgColor.brighter(0.05f),
         bounds.toFloat().getY(),
@@ -60,8 +67,8 @@ void PanelHeader::paint(juce::Graphics& g)
     g.setGradientFill(gradient);
     g.fillRect(bounds);
 
-    // Bottom Border (Neon Cyan accent line)
-    g.setColour(juce::Colour(0, 255, 255).withAlpha(0.5f));
+    // Bottom Border (accent line)
+    g.setColour(theme.getAccentColor().withAlpha(0.5f));
     g.fillRect(bounds.getX(), bounds.getBottom() - 1, bounds.getWidth(), 1);
 }
 
@@ -240,14 +247,16 @@ void DockablePanel::resized()
 
 void DockablePanel::paint(juce::Graphics& g)
 {
+    auto& theme = ThemeManager::getInstance();
+
     // Dunkler Hintergrund als Basis
-    g.fillAll(juce::Colour(15, 15, 25));
+    g.fillAll(theme.getBackgroundColor());
 
     // Optional: Subtile Border wenn angedockt
     if (isDocked())
     {
         auto bounds = getLocalBounds();
-        g.setColour(juce::Colour(40, 40, 60));
+        g.setColour(theme.getPanelBorderColor());
         g.drawRect(bounds, 1);
     }
 }
@@ -283,20 +292,20 @@ void DockablePanel::updateHeaderVisibility()
 }
 
 // ============================================================================
-// Static Color Helpers
+// Static Color Helpers (delegated to ThemeManager)
 // ============================================================================
 
 juce::Colour DockablePanel::getHeaderBackgroundColor()
 {
-    return juce::Colour(25, 25, 40);
+    return ThemeManager::getInstance().getPanelHeaderColor();
 }
 
 juce::Colour DockablePanel::getHeaderTextColor()
 {
-    return juce::Colour(200, 200, 220);
+    return ThemeManager::getInstance().getTextSecondaryColor();
 }
 
 juce::Colour DockablePanel::getHeaderButtonColor()
 {
-    return juce::Colour(0, 255, 255);  // Neon Cyan
+    return ThemeManager::getInstance().getInfoColor();
 }

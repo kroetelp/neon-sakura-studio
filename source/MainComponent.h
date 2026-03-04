@@ -14,7 +14,16 @@
 #include <memory>
 
 #include "WavetableUI/NeonSakuraLookAndFeel.h"
+#include "Theme/ThemeManager.h"
+#include "UI/TransportBar.h"
+#include "UI/GlobalControlsBar.h"
+#include "UI/TrackToolsBar.h"
+#include "UI/PanelTogglesBar.h"
 #include "WootingManager.h"
+#include "AudioRouting/AudioRoutingGraph.h"  // For LoadedPlugin struct
+
+// Forward declarations for PluginLoadingCoordinator
+class PluginLoadingCoordinator;
 
 // Forward declarations
 class TrackManager;
@@ -24,10 +33,17 @@ class PanelManager;
 class DockingManager;
 class AudioEngine;
 class PatternGenerator;
-class RhythmExplorer;
-class MelodyPanel;
+class RhythmExplorerPanel;
+class MelodyPanelPanel;
 class WavetableParams;
 class TimelineComponent;
+class VSTPluginManager;
+class PluginWindowManager;
+class PluginBrowserComponent;
+class PluginInstance;
+class PluginLoadingCoordinator;
+// class PluginSandboxManager;  // TODO: Phase 6.2 - Disabled for now
+class CPUProfiler;
 
 /**
  * MainComponent - Das Hauptfenster der DAW (Single-Window Workspace)
@@ -69,6 +85,19 @@ public:
     // === DockingManager Integration ===
     void triggerLayoutUpdate() { resized(); }
 
+    // === VST Plugin Hosting ===
+    VSTPluginManager& getVSTPluginManager() { return *vstPluginManager; }
+    PluginWindowManager& getPluginWindowManager() { return *pluginWindowManager; }
+    PluginLoadingCoordinator& getPluginLoadingCoordinator() { return *pluginLoadingCoordinator; }
+    // PluginSandboxManager& getPluginSandboxManager() { return *pluginSandboxManager; }  // TODO: Phase 6.2
+    CPUProfiler& getCPUProfiler() { return *cpuProfiler; }
+
+    /** Get the currently selected track index for plugin loading. */
+    int getSelectedTrackIndex() const { return selectedTrackIndex; }
+
+    /** Set the selected track index. */
+    void setSelectedTrackIndex(int index) { selectedTrackIndex = index; }
+
 private:
     static constexpr int numTracks = 8;
 
@@ -86,6 +115,25 @@ private:
     std::unique_ptr<AudioEngine> audioEngine;
     std::unique_ptr<PatternGenerator> patternGenerator;
     std::unique_ptr<WootingManager> wootingManager;
+
+    // ========================================================================
+    // VST HOSTING (External Plugin Support)
+    // ========================================================================
+    std::unique_ptr<VSTPluginManager> vstPluginManager;
+    std::unique_ptr<PluginWindowManager> pluginWindowManager;
+    std::unique_ptr<PluginBrowserComponent> pluginBrowserComponent;
+
+    // Phase 6.1: Lock-Free Plugin Loading Coordinator
+    std::unique_ptr<PluginLoadingCoordinator> pluginLoadingCoordinator;
+
+    // Phase 6.2: Plugin Sandbox Manager (Optional) - Disabled for now
+    // std::unique_ptr<PluginSandboxManager> pluginSandboxManager;
+
+    // Phase 6.3: CPU Profiler
+    std::unique_ptr<CPUProfiler> cpuProfiler;
+
+    // Track loaded plugins for window management and state access
+    std::vector<LoadedPlugin> loadedPlugins;
 
     // ========================================================================
     // STRETCHABLE LAYOUT (für vertikales Resizing)
@@ -109,20 +157,28 @@ private:
     static constexpr int stepSequencerTabIndex = 1;
 
     // ========================================================================
-    // GUI COMPONENTS - TOP BAR
+    // GUI COMPONENTS - TOP BAR (New Modular Design)
     // ========================================================================
+    std::unique_ptr<TransportBar> transportBar;
+    std::unique_ptr<GlobalControlsBar> globalControlsBar;
+    std::unique_ptr<TrackToolsBar> trackToolsBar;
+    std::unique_ptr<PanelTogglesBar> panelTogglesBar;
+
+    // Additional Top Bar Controls (kept for compatibility)
+    juce::TextButton clearAllButton;
+    juce::TextButton audioSettingsButton;
+    juce::TextButton wootingSettingsButton;
+
+    // Legacy Controls (will be phased out)
     juce::TextButton playButton;
     juce::TextButton stopButton;
     juce::TextButton setFolderButton;
-    juce::TextButton clearAllButton;
-    juce::TextButton audioSettingsButton;
-    juce::TextButton wootingSettingsButton;  // NEU: Wooting Keyboard Settings
     juce::TextButton rhythmExplorerButton;
     juce::TextButton melodyWorkstationButton;
     juce::TextButton wavetableSynthButton;
-    juce::TextButton timelineButton;        // NEU: Button für Timeline Tab
-    juce::TextButton stepSequencerButton;  // NEU: Button für Step Sequencer Tab
-
+    juce::TextButton timelineButton;
+    juce::TextButton stepSequencerButton;
+    juce::TextButton pluginBrowserButton;
     juce::Slider bpmSlider;
     juce::Label bpmLabel;
     juce::Slider masterVolumeSlider;
@@ -153,8 +209,11 @@ private:
     // INTERNAL STATE
     // ========================================================================
     int selectedTrackForRhythm = 0;
+    int selectedTrackIndex = 0;  // Aktuell ausgewählter Track für Plugin-Loading
     std::unique_ptr<juce::FileChooser> chooser;
     bool isResizing = false;
+    bool pluginBrowserVisible = false;  // State für Plugin Browser Sidebar
+    static constexpr int pluginBrowserWidth = 280;  // Breite der Plugin Browser Sidebar
 
     // ========================================================================
     // HELPER METHODS
@@ -164,7 +223,6 @@ private:
     void initializeDockingPanels();
     void initializeBottomTabs();  // NEU: Tab-Component initialisieren
     void connectTrackCallbacks();
-    void connectPanelCallbacks();
     void connectUICallbacks();
 
     void updatePlayhead();
@@ -176,20 +234,25 @@ private:
     // === Layout Helper ===
     void layoutTopBar(juce::Rectangle<int>& area);
     void layoutTracks(juce::Rectangle<int> area);
-    void layoutOldSidebarPanels(const juce::Rectangle<int>& rhythmArea,
-                                  const juce::Rectangle<int>& melodyArea);
 
     // === Tab Helper ===
     void switchToTimelineTab();
     void switchToStepSequencerTab();
 
-    // === Color Helpers ===
-    juce::Colour getNeonPink() const { return juce::Colour(255, 20, 147); }
-    juce::Colour getNeonCyan() const { return juce::Colour(0, 255, 255); }
-    juce::Colour getNeonPurple() const { return juce::Colour(180, 0, 255); }
-    juce::Colour getNeonGreen() const { return juce::Colour(0, 255, 127); }
-    juce::Colour getDarkBackground() const { return juce::Colour(15, 15, 25); }
-    juce::Colour getStepInactive() const { return juce::Colour(30, 30, 45); }
+    // === VST Hosting Helper ===
+    void initializeVSTHosting();
+    void connectVSTCallbacks();
+    void togglePluginBrowser();
+    void loadPluginToSelectedTrack(std::unique_ptr<PluginInstance> instance);
+    juce::Rectangle<int> layoutPluginBrowser(juce::Rectangle<int>& mainArea);
+
+    // === Color Helpers (delegated to ThemeManager) ===
+    juce::Colour getNeonPink() const { return ThemeManager::getInstance().getAccentColor(); }
+    juce::Colour getNeonCyan() const { return ThemeManager::getInstance().getInfoColor(); }
+    juce::Colour getNeonPurple() const { return ThemeManager::getInstance().getAccentColor().withHue(0.8f); }
+    juce::Colour getNeonGreen() const { return ThemeManager::getInstance().getSuccessColor(); }
+    juce::Colour getDarkBackground() const { return ThemeManager::getInstance().getBackgroundColor(); }
+    juce::Colour getStepInactive() const { return ThemeManager::getInstance().getPanelBackgroundColor(); }
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };
