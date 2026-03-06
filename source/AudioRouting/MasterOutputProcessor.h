@@ -62,6 +62,12 @@ public:
     void setMasterVolume(float volume);
     float getMasterVolume() const { return masterVolume.load(); }
 
+    void setMasterPan(float pan);
+    float getMasterPan() const { return masterPan.load(); }
+
+    void setMasterMute(bool muted);
+    bool isMasterMuted() const { return masterMuted.load(); }
+
     void setReverbWetLevel(float wetLevel);
     float getReverbWetLevel() const { return reverbWetLevel.load(); }
 
@@ -78,6 +84,8 @@ public:
 
 private:
     std::atomic<float> masterVolume{0.8f};
+    std::atomic<float> masterPan{0.0f};
+    std::atomic<bool> masterMuted{false};
     std::atomic<float> reverbWetLevel{0.0f};
     std::atomic<float> reverbRoomSize{0.5f};
     std::atomic<float> reverbDamping{0.5f};

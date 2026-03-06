@@ -145,6 +145,18 @@ void MasterOutputProcessor::setMasterVolume(float volume)
 }
 
 //==============================================================================
+void MasterOutputProcessor::setMasterPan(float pan)
+{
+    masterPan.store(juce::jlimit(-1.0f, 1.0f, pan));
+}
+
+//==============================================================================
+void MasterOutputProcessor::setMasterMute(bool muted)
+{
+    masterMuted.store(muted);
+}
+
+//==============================================================================
 void MasterOutputProcessor::setReverbWetLevel(float wetLevel)
 {
     reverbWetLevel.store(juce::jlimit(0.0f, 1.0f, wetLevel));

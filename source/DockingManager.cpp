@@ -5,6 +5,14 @@
 #include "DockingManager.h"
 #include "MainComponent.h"  // Für triggerLayoutUpdate
 #include "Theme/ThemeManager.h"
+#include "WavetableUI/WavetablePanel.h"
+#include "WavetableUI/WavetableSynthEditor.h"
+#include "WavetableSynth/WavetableParams.h"
+#include "WavetableSynth/WavetableData.h"
+#include "RhythmExplorer/RhythmExplorerPanel.h"
+#include "MelodyPanel/MelodyPanelPanel.h"
+#include "UI/SynthWorkspacePanel.h"
+#include "UI/ZoneSnapManager.h"
 
 // ============================================================================
 // FloatingWindowContainer Implementation
@@ -68,6 +76,14 @@ void FloatingWindowContainer::closeButtonPressed()
 void FloatingWindowContainer::moved()
 {
     DocumentWindow::moved();
+
+    // NEU: Snapping Logic für Floating Panels
+    if (panel && dynamic_cast<FloatingPanelBase*>(panel))
+    {
+        // TODO: Implementiere Zone-Snapping
+        // Dies erfordert Zugriff auf ZoneSnapManager
+        // Die Position kann automatisch zur nächsten Zone gesnappt werden
+    }
 
     if (onWindowMoved)
         onWindowMoved(this);
@@ -216,7 +232,11 @@ DockingManager::DockingManager()
 
 DockingManager::~DockingManager()
 {
-    // Floating Windows zuerst schließen
+    // Track-Wavetable Editor und Window schließen
+    trackWavetableEditor.reset();
+    trackWavetableWindow.reset();
+
+    // Floating Windows schließen
     closeAllFloatingWindows();
 
     // Panels werden automatisch durch unique_ptr gelöscht
@@ -783,16 +803,133 @@ void DockingManager::setTimelineDependencies(TimelineData* data, RecordingManage
 
 void DockingManager::setWavetableEngine(WavetableEngine* engine)
 {
-    // Wird implementiert wenn WavetablePanel existiert
-    juce::ignoreUnused(engine);
+    auto* wavetablePanel = getPanelAs<WavetablePanel>(PanelType::WavetableSynth);
+    if (wavetablePanel)
+    {
+        wavetablePanel->setEngine(engine);
+    }
 }
 
 void DockingManager::openTrackWavetableEditor(int trackIndex,
                                                std::shared_ptr<WavetableParams> params,
                                                std::shared_ptr<WavetableData> wavetableData)
 {
-    // Wird implementiert wenn WavetablePanel existiert
-    juce::ignoreUnused(trackIndex, params, wavetableData);
+    if (!params)
+        return;
+
+    currentEditingTrack = trackIndex;
+    currentTrackParams = params;
+    currentTrackWavetableData = wavetableData;
+
+    // Create or update the editor
+    if (!trackWavetableEditor)
+    {
+        trackWavetableEditor = std::make_unique<WavetableSynthEditor>(params);
+    }
+    else
+    {
+        trackWavetableEditor->setSharedParams(params);
+    }
+
+    // Set wavetable data if available
+    if (wavetableData)
+    {
+        trackWavetableEditor->setWavetableData(wavetableData);
+    }
+
+    // Create window if needed
+    if (!trackWavetableWindow)
+    {
+        auto& theme = ThemeManager::getInstance();
+
+        // Custom DocumentWindow that just hides on close
+        class TrackWavetableWindow : public juce::DocumentWindow
+        {
+        public:
+            TrackWavetableWindow(const juce::String& name)
+                : juce::DocumentWindow(name, ThemeManager::getInstance().getBackgroundColor(),
+                                      juce::DocumentWindow::allButtons, true)
+            {
+                setUsingNativeTitleBar(true);
+                setResizable(true, true);
+                setResizeLimits(600, 400, 2000, 1500);
+            }
+
+            void closeButtonPressed() override
+            {
+                setVisible(false);
+            }
+        };
+
+        trackWavetableWindow = std::make_unique<TrackWavetableWindow>(
+            "Track " + juce::String(trackIndex + 1) + " Wavetable");
+        trackWavetableWindow->setContentOwned(trackWavetableEditor.get(), false);
+    }
+    else
+    {
+        // Update window title for new track
+        trackWavetableWindow->setName("Track " + juce::String(trackIndex + 1) + " Wavetable");
+    }
+
+    trackWavetableWindow->setSize(1050, 750);
+    trackWavetableWindow->setVisible(true);
+    trackWavetableWindow->toFront(true);
+}
+
+void DockingManager::closeTrackWavetableEditor()
+{
+    if (trackWavetableWindow)
+    {
+        trackWavetableWindow->setVisible(false);
+    }
+    currentEditingTrack = -1;
+    currentTrackParams.reset();
+    currentTrackWavetableData.reset();
+}
+
+bool DockingManager::isTrackWavetableEditorOpen() const
+{
+    return trackWavetableWindow != nullptr && trackWavetableWindow->isVisible();
+}
+
+int DockingManager::getCurrentEditingTrack() const
+{
+    return currentEditingTrack;
+}
+
+void DockingManager::updatePanelsForTrack(int trackIndex)
+{
+    // Update Wavetable Synth Panel with track params
+    // (For now, this doesn't automatically switch WavetablePanel to track mode
+    // - the user must explicitly open track editor)
+
+    // Update RhythmExplorer Panel
+    auto* rhythmPanel = getPanelAs<RhythmExplorerPanel>(PanelType::RhythmExplorer);
+    if (rhythmPanel)
+    {
+        rhythmPanel->setTargetTrack(trackIndex);
+    }
+
+    // Update MelodyPanel
+    auto* melodyPanel = getPanelAs<MelodyPanelPanel>(PanelType::MelodyPanel);
+    if (melodyPanel)
+    {
+        melodyPanel->setTargetTrack(trackIndex);
+    }
+
+    // Update SynthWorkspacePanel
+    auto* synthWorkspacePanel = getPanelAs<SynthWorkspacePanel>(PanelType::SynthWorkspace);
+    if (synthWorkspacePanel)
+    {
+        synthWorkspacePanel->setTargetTrack(trackIndex);
+    }
+
+    // Update Track-Wavetable Editor if open
+    if (isTrackWavetableEditorOpen() && currentTrackParams)
+    {
+        // Note: trackWavetableEditor already has shared params,
+        // so changes are reflected automatically
+    }
 }
 
 // === Floating Window Management ===
@@ -922,4 +1059,73 @@ PanelType DockingManager::stringToPanelType(const juce::String& str)
     if (str == "TrackEditor")     return PanelType::TrackEditor;
 
     return PanelType::Unknown;
+}
+
+// ============================================================================
+// NEU: Floating Panel Features Implementation
+// ============================================================================
+
+void DockingManager::setZoneSnapManager(ZoneSnapManager* manager)
+{
+    zoneSnapManager = manager;
+
+    // Initialisiere Zone-Bounds wenn verfügbar
+    if (zoneSnapManager && mainComponent)
+    {
+        auto bounds = mainComponent->getBounds();
+        zoneSnapManager->updateZoneBounds(bounds);
+    }
+}
+
+void DockingManager::setPanelState(PanelType type, PanelState state)
+{
+    panelStates[type] = state;
+
+    // Wenn das Panel ein FloatingPanelBase ist, aktualisiere es
+    if (auto* panel = getPanel(type))
+    {
+        if (auto* floatingPanel = dynamic_cast<FloatingPanelBase*>(panel))
+        {
+            floatingPanel->setPanelState(state);
+        }
+    }
+}
+
+PanelState DockingManager::getPanelState(PanelType type) const
+{
+    auto it = panelStates.find(type);
+    if (it != panelStates.end())
+    {
+        return it->second;
+    }
+    return PanelState::Hidden;
+}
+
+void DockingManager::setPanelSizeMode(PanelType type, PanelSizeMode mode)
+{
+    panelSizeModes[type] = mode;
+
+    // Wenn das Panel ein FloatingPanelBase ist, aktualisiere es
+    DockablePanel* panel = getPanel(type);
+
+    if (auto* floatingPanel = dynamic_cast<FloatingPanelBase*>(panel))
+    {
+        floatingPanel->setSizeMode(mode);
+    }
+
+    // Wenn das Panel angedockt ist, aktualisiere das Layout
+    if (panel && panel->isDocked())
+    {
+        triggerLayoutUpdate();
+    }
+}
+
+PanelSizeMode DockingManager::getPanelSizeMode(PanelType type) const
+{
+    auto it = panelSizeModes.find(type);
+    if (it != panelSizeModes.end())
+    {
+        return it->second;
+    }
+    return PanelSizeMode::Standard;
 }

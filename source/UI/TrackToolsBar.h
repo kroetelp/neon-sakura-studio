@@ -21,6 +21,7 @@ public:
     std::function<void(int)> onGenreChanged;
     std::function<void(int)> onTargetTrackChanged;
     std::function<void()> onGenerateClicked;
+    std::function<void()> onClearAllClicked;
     std::function<void(float)> onSwingChanged;
     std::function<void(float)> onReverbChanged;
     std::function<void(const juce::String&)> onWorkspacePresetChanged;
@@ -30,6 +31,7 @@ public:
     juce::ComboBox* getGenreCombo() const { return genreCombo.get(); }
     juce::ComboBox* getTargetTrackCombo() const { return targetTrackCombo.get(); }
     juce::TextButton* getGenerateButton() const { return generateButton.get(); }
+    juce::TextButton* getClearAllButton() const { return clearAllButton.get(); }
     juce::Slider* getSwingSlider() const { return swingSlider.get(); }
     juce::Slider* getReverbSlider() const { return reverbSlider.get(); }
     juce::ComboBox* getWorkspacePresetCombo() const { return workspacePresetCombo.get(); }
@@ -39,6 +41,7 @@ private:
     std::unique_ptr<juce::ComboBox> genreCombo;
     std::unique_ptr<juce::ComboBox> targetTrackCombo;
     std::unique_ptr<juce::TextButton> generateButton;
+    std::unique_ptr<juce::TextButton> clearAllButton;
     std::unique_ptr<juce::Slider> swingSlider;
     std::unique_ptr<juce::Slider> reverbSlider;
     std::unique_ptr<juce::ComboBox> workspacePresetCombo;

@@ -16,6 +16,17 @@ TransportBar::TransportBar()
 
     addAndMakeVisible(*playButton);
     addAndMakeVisible(*stopButton);
+
+    // Connect callbacks
+    playButton->onClick = [this]() {
+        if (onPlay)
+            onPlay();
+    };
+
+    stopButton->onClick = [this]() {
+        if (onStop)
+            onStop();
+    };
 }
 
 void TransportBar::resized()

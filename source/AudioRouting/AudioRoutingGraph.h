@@ -396,6 +396,30 @@ public:
     /** Check if plugin parameter automation is enabled. */
     bool isPluginAutomationEnabled() const;
 
+    // ============================================================
+    // UI Integration: MasterBusPanel Callbacks
+    // ============================================================
+
+    // Callback-Typ für Level-Updates (L/R-Kanäle)
+    using LevelUpdateCallback = std::function<void(float, float)>;
+
+    // Callback-Typ für Loudness-Updates (LUFS, Peaks)
+    using LoudnessUpdateCallback = std::function<void(float)>;
+
+    void setLevelUpdateCallback(LevelUpdateCallback callback);
+    void setLoudnessUpdateCallback(LoudnessUpdateCallback callback);
+
+    // Master Control Access
+    void setMasterVolume(float volume);
+    void setMasterPan(float pan);
+    void setMasterMute(bool muted);
+
+    // Level-Update für UI
+    void notifyLevelUpdate(float leftLevel, float rightLevel);
+
+    // Loudness-Update für UI
+    void notifyLoudnessUpdate(float loudness);
+
 private:
     bool initialized = false;
 
@@ -451,6 +475,12 @@ private:
     // MIDI Output Routing
     // ============================================================
     std::unique_ptr<MIDIOutputHandler> midiOutputHandler;  // Manages all MIDI output routings
+
+    // ============================================================
+    // UI Callbacks (thread-safe)
+    // ============================================================
+    LevelUpdateCallback levelUpdateCallback;       // Callback for L/R level updates
+    LoudnessUpdateCallback loudnessUpdateCallback;  // Callback for LUFS updates
 
     // ============================================================
     // Plugin Parameter Automation

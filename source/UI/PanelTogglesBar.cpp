@@ -11,12 +11,6 @@ PanelTogglesBar::PanelTogglesBar()
     rhythmExplorerButton->setColour(juce::TextButton::buttonColourId, theme.getButtonColor());
     rhythmExplorerButton->setColour(juce::TextButton::textColourOnId, theme.getTextPrimaryColor());
     rhythmExplorerButton->setColour(juce::TextButton::buttonOnColourId, theme.getAccentColor());
-    rhythmExplorerButton->onClick = [this]() {
-        if (dockingManager) {
-            bool visible = rhythmExplorerButton->getToggleState();
-            dockingManager->setPanelVisible(PanelType::RhythmExplorer, visible);
-        }
-    };
 
     // Melody Button
     melodyButton = std::make_unique<juce::TextButton>("Melody");
@@ -24,12 +18,6 @@ PanelTogglesBar::PanelTogglesBar()
     melodyButton->setColour(juce::TextButton::buttonColourId, theme.getButtonColor());
     melodyButton->setColour(juce::TextButton::textColourOnId, theme.getTextPrimaryColor());
     melodyButton->setColour(juce::TextButton::buttonOnColourId, theme.getAccentColor());
-    melodyButton->onClick = [this]() {
-        if (dockingManager) {
-            bool visible = melodyButton->getToggleState();
-            dockingManager->setPanelVisible(PanelType::MelodyPanel, visible);
-        }
-    };
 
     // Wavetable Button
     wavetableButton = std::make_unique<juce::TextButton>("Wavetable");
@@ -38,12 +26,6 @@ PanelTogglesBar::PanelTogglesBar()
     wavetableButton->setColour(juce::TextButton::buttonColourId, theme.getButtonColor());
     wavetableButton->setColour(juce::TextButton::textColourOnId, theme.getTextPrimaryColor());
     wavetableButton->setColour(juce::TextButton::buttonOnColourId, theme.getAccentColor());
-    wavetableButton->onClick = [this]() {
-        if (dockingManager) {
-            bool visible = wavetableButton->getToggleState();
-            dockingManager->setPanelVisible(PanelType::WavetableSynth, visible);
-        }
-    };
 
     // Timeline Button
     timelineButton = std::make_unique<juce::TextButton>("Timeline");
@@ -52,12 +34,13 @@ PanelTogglesBar::PanelTogglesBar()
     timelineButton->setColour(juce::TextButton::buttonColourId, theme.getButtonColor());
     timelineButton->setColour(juce::TextButton::textColourOnId, theme.getTextPrimaryColor());
     timelineButton->setColour(juce::TextButton::buttonOnColourId, theme.getAccentColor());
-    timelineButton->onClick = [this]() {
-        if (dockingManager) {
-            bool visible = timelineButton->getToggleState();
-            dockingManager->setPanelVisible(PanelType::Timeline, visible);
-        }
-    };
+
+    // Step Sequencer Button
+    stepSequencerButton = std::make_unique<juce::TextButton>("Step Sequencer");
+    stepSequencerButton->setClickingTogglesState(true);
+    stepSequencerButton->setColour(juce::TextButton::buttonColourId, theme.getButtonColor());
+    stepSequencerButton->setColour(juce::TextButton::textColourOnId, theme.getTextPrimaryColor());
+    stepSequencerButton->setColour(juce::TextButton::buttonOnColourId, theme.getAccentColor());
 
     // Plugin Browser Button (legacy - nicht im DockingManager)
     pluginBrowserButton = std::make_unique<juce::TextButton>("Plugins");
@@ -65,11 +48,16 @@ PanelTogglesBar::PanelTogglesBar()
     pluginBrowserButton->setColour(juce::TextButton::buttonColourId, theme.getButtonColor());
     pluginBrowserButton->setColour(juce::TextButton::textColourOnId, theme.getTextPrimaryColor());
     pluginBrowserButton->setColour(juce::TextButton::buttonOnColourId, theme.getAccentColor());
+    pluginBrowserButton->onClick = [this]() {
+        if (onPluginBrowserToggled)
+            onPluginBrowserToggled(true);
+    };
 
     addAndMakeVisible(*rhythmExplorerButton);
     addAndMakeVisible(*melodyButton);
     addAndMakeVisible(*wavetableButton);
     addAndMakeVisible(*timelineButton);
+    addAndMakeVisible(*stepSequencerButton);
     addAndMakeVisible(*pluginBrowserButton);
 }
 
@@ -97,6 +85,10 @@ void PanelTogglesBar::resized()
     timelineButton->setBounds(x, 0, buttonWidth, height);
     x += buttonWidth + gap;
 
+    // Step Sequencer Button
+    stepSequencerButton->setBounds(x, 0, 110, height);
+    x += 110 + gap;
+
     // Plugin Browser Button
     pluginBrowserButton->setBounds(x, 0, buttonWidth, height);
 }
@@ -111,6 +103,44 @@ void PanelTogglesBar::setDockingManager(DockingManager* manager)
 
     if (dockingManager)
     {
+        // Jetzt den DockingManager setzen - Callbacks einrichten
+        // Rhythm Explorer Callback
+        rhythmExplorerButton->onClick = [this]() {
+            // Toggle-Button hat den Zustand bereits geändert
+            // Wir prüfen den neuen Zustand (inverted, da wir vor dem Click prüfen wollen)
+            bool newState = !dockingManager->isPanelVisible(PanelType::RhythmExplorer);
+            if (dockingManager)
+                dockingManager->setPanelVisible(PanelType::RhythmExplorer, newState);
+        };
+
+        // Melody Callback
+        melodyButton->onClick = [this]() {
+            bool newState = !dockingManager->isPanelVisible(PanelType::MelodyPanel);
+            if (dockingManager)
+                dockingManager->setPanelVisible(PanelType::MelodyPanel, newState);
+        };
+
+        // Wavetable Callback
+        wavetableButton->onClick = [this]() {
+            bool newState = !dockingManager->isPanelVisible(PanelType::WavetableSynth);
+            if (dockingManager)
+                dockingManager->setPanelVisible(PanelType::WavetableSynth, newState);
+        };
+
+        // Timeline Callback
+        timelineButton->onClick = [this]() {
+            bool newState = !dockingManager->isPanelVisible(PanelType::Timeline);
+            if (dockingManager)
+                dockingManager->setPanelVisible(PanelType::Timeline, newState);
+        };
+
+        // Step Sequencer Callback
+        stepSequencerButton->onClick = [this]() {
+            bool newState = !dockingManager->isPanelVisible(PanelType::StepSequencer);
+            if (dockingManager)
+                dockingManager->setPanelVisible(PanelType::StepSequencer, newState);
+        };
+
         // Timer starten für periodische Sync
         startTimerHz(30);  // 30 Hz - oft genug für UI-Updates
         syncButtonStates();
@@ -131,6 +161,7 @@ void PanelTogglesBar::syncButtonStates()
     melodyButton->setToggleState(dockingManager->isPanelVisible(PanelType::MelodyPanel), juce::dontSendNotification);
     wavetableButton->setToggleState(dockingManager->isPanelVisible(PanelType::WavetableSynth), juce::dontSendNotification);
     timelineButton->setToggleState(dockingManager->isPanelVisible(PanelType::Timeline), juce::dontSendNotification);
+    stepSequencerButton->setToggleState(dockingManager->isPanelVisible(PanelType::StepSequencer), juce::dontSendNotification);
 }
 
 void PanelTogglesBar::timerCallback()
@@ -149,6 +180,7 @@ PanelType PanelTogglesBar::getPanelTypeForButton(juce::TextButton* button) const
     if (button == melodyButton.get()) return PanelType::MelodyPanel;
     if (button == wavetableButton.get()) return PanelType::WavetableSynth;
     if (button == timelineButton.get()) return PanelType::Timeline;
+    if (button == stepSequencerButton.get()) return PanelType::StepSequencer;
 
     return PanelType::Unknown;
 }
@@ -161,6 +193,7 @@ juce::TextButton* PanelTogglesBar::getButtonForPanelType(PanelType type) const
         case PanelType::MelodyPanel: return melodyButton.get();
         case PanelType::WavetableSynth: return wavetableButton.get();
         case PanelType::Timeline: return timelineButton.get();
+        case PanelType::StepSequencer: return stepSequencerButton.get();
         default: return nullptr;
     }
 }

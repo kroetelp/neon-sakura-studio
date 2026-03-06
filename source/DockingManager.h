@@ -29,6 +29,13 @@ class RecordingManager;
 class WavetableEngine;
 class WavetableParams;
 class WavetableData;
+class WavetableSynthEditor;
+class FloatingPanelBase;
+class ZoneSnapManager;
+
+// Include für Enums (definiert in FloatingPanelEnums.h)
+#include "UI/FloatingPanelEnums.h"
+#include "UI/FloatingPanelBase.h"
 
 // ============================================================================
 /**
@@ -209,6 +216,22 @@ public:
     // Löst ein Layout-Update in der MainComponent aus
     void triggerLayoutUpdate();
 
+    // ============================================================
+    // NEU: Floating Panel Features
+    // ============================================================
+
+    // ZoneSnapManager Integration
+    void setZoneSnapManager(ZoneSnapManager* manager);
+    ZoneSnapManager* getZoneSnapManager() const { return zoneSnapManager; }
+
+    // Panel State (Floating, Snapped, Minimized, Collapsed, Hidden)
+    void setPanelState(PanelType type, PanelState state);
+    PanelState getPanelState(PanelType type) const;
+
+    // Panel Size Mode (Compact, Standard, Expanded, Full)
+    void setPanelSizeMode(PanelType type, PanelSizeMode mode);
+    PanelSizeMode getPanelSizeMode(PanelType type) const;
+
     // === State Persistence ===
     juce::ValueTree saveLayoutState() const;
     void restoreLayoutState(const juce::ValueTree& state);
@@ -229,6 +252,12 @@ public:
     void openTrackWavetableEditor(int trackIndex,
                                    std::shared_ptr<WavetableParams> params,
                                    std::shared_ptr<WavetableData> wavetableData);
+    void closeTrackWavetableEditor();
+    bool isTrackWavetableEditorOpen() const;
+    int getCurrentEditingTrack() const;
+
+    // Context Update - Aktualisiert Panels basierend auf Track-Auswahl
+    void updatePanelsForTrack(int trackIndex);
 
     // === Floating Window Management ===
     FloatingWindowContainer* getFloatingWindow(PanelType type) const;
@@ -251,6 +280,23 @@ private:
 
     // MainComponent Reference (non-owning)
     MainComponent* mainComponent = nullptr;
+
+    // Track-Wavetable Editor (special floating window for per-track editing)
+    std::unique_ptr<WavetableSynthEditor> trackWavetableEditor;
+    std::unique_ptr<juce::DocumentWindow> trackWavetableWindow;
+    int currentEditingTrack = -1;
+    std::shared_ptr<WavetableParams> currentTrackParams;
+    std::shared_ptr<WavetableData> currentTrackWavetableData;
+
+    // NEU: ZoneSnapManager für Floating Panel Snapping
+    ZoneSnapManager* zoneSnapManager = nullptr;
+
+    // NEU: Extended Panel States
+    std::unordered_map<PanelType, PanelState> panelStates;
+    std::unordered_map<PanelType, PanelSizeMode> panelSizeModes;
+
+    // NEU: Panel Grouping (verbundene Panels)
+    std::unordered_map<juce::String, std::vector<PanelType>> panelGroups;
 
     // === Internal Helper ===
     void createFloatingWindow(PanelType type);

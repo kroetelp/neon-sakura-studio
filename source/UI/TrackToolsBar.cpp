@@ -44,6 +44,11 @@ TrackToolsBar::TrackToolsBar()
     generateButton->setColour(juce::TextButton::buttonColourId, theme.getAccentColor());
     generateButton->setColour(juce::TextButton::textColourOnId, theme.getBackgroundColor());
 
+    // Clear All Button
+    clearAllButton = std::make_unique<juce::TextButton>("Clear All");
+    clearAllButton->setColour(juce::TextButton::buttonColourId, theme.getErrorColor().darker(0.3f));
+    clearAllButton->setColour(juce::TextButton::textColourOnId, theme.getTextPrimaryColor());
+
     // Swing Slider
     swingSlider = std::make_unique<juce::Slider>(juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight);
     swingSlider->setRange(0, 0.75, 0.01);
@@ -72,16 +77,50 @@ TrackToolsBar::TrackToolsBar()
     addAndMakeVisible(*genreCombo);
     addAndMakeVisible(*targetTrackCombo);
     addAndMakeVisible(*generateButton);
+    addAndMakeVisible(*clearAllButton);
     addAndMakeVisible(*swingSlider);
     addAndMakeVisible(*reverbSlider);
     addAndMakeVisible(*workspacePresetCombo);
 
-    // Connect workspace preset callback
+    // Connect callbacks
+    loopLengthCombo->onChange = [this]() {
+        if (onLoopLengthChanged && loopLengthCombo->getSelectedId() > 0)
+            onLoopLengthChanged(loopLengthCombo->getSelectedId());
+    };
+
+    genreCombo->onChange = [this]() {
+        if (onGenreChanged && genreCombo->getSelectedId() > 0)
+            onGenreChanged(genreCombo->getSelectedId());
+    };
+
+    targetTrackCombo->onChange = [this]() {
+        if (onTargetTrackChanged && targetTrackCombo->getSelectedId() > 0)
+            onTargetTrackChanged(targetTrackCombo->getSelectedId());
+    };
+
+    generateButton->onClick = [this]() {
+        if (onGenerateClicked)
+            onGenerateClicked();
+    };
+
+    clearAllButton->onClick = [this]() {
+        if (onClearAllClicked)
+            onClearAllClicked();
+    };
+
+    swingSlider->onValueChange = [this]() {
+        if (onSwingChanged)
+            onSwingChanged(static_cast<float>(swingSlider->getValue()));
+    };
+
+    reverbSlider->onValueChange = [this]() {
+        if (onReverbChanged)
+            onReverbChanged(static_cast<float>(reverbSlider->getValue()));
+    };
+
     workspacePresetCombo->onChange = [this]() {
         if (onWorkspacePresetChanged && workspacePresetCombo->getSelectedId() > 0)
-        {
-            onWorkspacePresetChanged(workspacePresetCombo->getText());
-        }
+            onWorkspacePresetChanged(workspacePresetCombo->getItemText(workspacePresetCombo->getSelectedId() - 1));
     };
 }
 
@@ -107,6 +146,10 @@ void TrackToolsBar::resized()
 
     // Generate Button
     generateButton->setBounds(x, 0, controlWidth, height);
+    x += controlWidth + gap;
+
+    // Clear All Button
+    clearAllButton->setBounds(x, 0, controlWidth, height);
     x += controlWidth + gap;
 
     // Swing Slider

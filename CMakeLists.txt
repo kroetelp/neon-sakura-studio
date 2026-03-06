@@ -97,8 +97,6 @@ target_sources(NeonSakuraStudio
     source/SampleManager.cpp
     source/PlaybackController.h
     source/PlaybackController.cpp
-    source/PanelManager.h
-    source/PanelManager.cpp
     source/DockablePanel.h
     source/DockablePanel.cpp
     source/DockingManager.h
@@ -313,6 +311,50 @@ target_sources(NeonSakuraStudio
     source/UI/TrackHeader.cpp
     source/UI/PluginChainEditor.h
     source/UI/PluginChainEditor.cpp
+    source/UI/SynthWorkspacePanel.h
+    source/UI/SynthWorkspacePanel.cpp
+    source/UI/AdvancedModulationPanel.h
+    source/UI/AdvancedModulationPanel.cpp
+    source/UI/PanelGlassEffect.h
+    source/UI/PanelGlassEffect.cpp
+    source/UI/PanelAnimator.h
+    source/UI/PanelAnimator.cpp
+    source/UI/PanelFeedbackSystem.h
+    source/UI/PanelFeedbackSystem.cpp
+    source/Theme/ExtendedThemeSystem.h
+    source/Theme/ExtendedThemeSystem.cpp
+    source/UI/WorkspacePresetUI.h
+    source/UI/WorkspacePresetUI.cpp
+    source/MainComponentExtension.h
+    source/MainComponentExtension.cpp
+    source/Testing/TestCoordinator.h
+    source/Testing/TestCoordinator.cpp
+
+    # =====================================================
+    # FLOATING PANELS (New UI Architecture)
+    # =====================================================
+    source/UI/FloatingPanelEnums.h
+    source/UI/FloatingPanelBase.h
+    source/UI/FloatingPanelBase.cpp
+    source/UI/EnhancedPanelHeader.h
+    source/UI/EnhancedPanelHeader.cpp
+    source/UI/ZoneSnapManager.h
+    source/UI/ZoneSnapManager.cpp
+
+    # =====================================================
+    # MIXING & ROUTING UI
+    # =====================================================
+    source/UI/RoutingMatrixPanel.h
+    source/UI/RoutingMatrixPanel.cpp
+    source/UI/EnhancedPluginChainEditor.h
+    source/UI/EnhancedPluginChainEditor.cpp
+    source/UI/MasterBusPanel.h
+    source/UI/MasterBusPanel.cpp
+
+    # =====================================================
+    # AUDIO ROUTING (AudioRoutingGraph Integration)
+    # =====================================================
+    # Note: AudioRoutingGraph already included above with UI callbacks
 
     # Music Generation
     source/PatternGenerator.h

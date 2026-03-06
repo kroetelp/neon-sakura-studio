@@ -30,10 +30,48 @@ GlobalControlsBar::GlobalControlsBar()
     folderLabel = std::make_unique<juce::Label>("folderLabel", "No folder selected");
     folderLabel->setColour(juce::Label::textColourId, theme.getTextSecondaryColor());
 
+    // Audio Settings Button
+    audioSettingsButton = std::make_unique<juce::TextButton>("Audio");
+    audioSettingsButton->setColour(juce::TextButton::buttonColourId, theme.getButtonColor());
+    audioSettingsButton->setColour(juce::TextButton::textColourOnId, theme.getAccentColor());
+
+    // Wooting Settings Button
+    wootingSettingsButton = std::make_unique<juce::TextButton>("Wooting");
+    wootingSettingsButton->setColour(juce::TextButton::buttonColourId, theme.getButtonColor());
+    wootingSettingsButton->setColour(juce::TextButton::textColourOnId, theme.getSuccessColor());
+
     addAndMakeVisible(*bpmSlider);
     addAndMakeVisible(*masterVolumeSlider);
     addAndMakeVisible(*folderButton);
     addAndMakeVisible(*folderLabel);
+    addAndMakeVisible(*audioSettingsButton);
+    addAndMakeVisible(*wootingSettingsButton);
+
+    // Connect callbacks
+    bpmSlider->onValueChange = [this]() {
+        if (onBpmChanged)
+            onBpmChanged(bpmSlider->getValue());
+    };
+
+    masterVolumeSlider->onValueChange = [this]() {
+        if (onMasterVolumeChanged)
+            onMasterVolumeChanged(static_cast<float>(masterVolumeSlider->getValue()));
+    };
+
+    folderButton->onClick = [this]() {
+        if (onFolderButtonClicked)
+            onFolderButtonClicked();
+    };
+
+    audioSettingsButton->onClick = [this]() {
+        if (onAudioSettingsClicked)
+            onAudioSettingsClicked();
+    };
+
+    wootingSettingsButton->onClick = [this]() {
+        if (onWootingSettingsClicked)
+            onWootingSettingsClicked();
+    };
 }
 
 void GlobalControlsBar::resized()
@@ -51,5 +89,12 @@ void GlobalControlsBar::resized()
     folderButton->setBounds(bounds.removeFromLeft(100));
 
     // Folder Label (remaining space)
-    folderLabel->setBounds(bounds);
+    auto remainingWidth = bounds.getWidth();
+    folderLabel->setBounds(bounds.removeFromLeft(remainingWidth * 0.6f));
+
+    // Audio Settings Button
+    audioSettingsButton->setBounds(bounds.removeFromLeft(60));
+
+    // Wooting Settings Button (remaining)
+    wootingSettingsButton->setBounds(bounds);
 }

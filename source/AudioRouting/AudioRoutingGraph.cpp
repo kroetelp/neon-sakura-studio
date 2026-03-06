@@ -1420,3 +1420,55 @@ bool AudioRoutingGraph::isPluginAutomationEnabled() const
 {
     return pluginParameterAutomation ? pluginParameterAutomation->isEnabled() : false;
 }
+
+//==============================================================================
+// ============================================================
+// UI Integration: MasterBusPanel Callbacks
+// ============================================================
+
+void AudioRoutingGraph::setLevelUpdateCallback(LevelUpdateCallback callback)
+{
+    levelUpdateCallback = std::move(callback);
+}
+
+void AudioRoutingGraph::setLoudnessUpdateCallback(LoudnessUpdateCallback callback)
+{
+    loudnessUpdateCallback = std::move(callback);
+}
+
+void AudioRoutingGraph::setMasterVolume(float volume)
+{
+    // Update Master Output Processor Volume
+    if (masterOutputProcessor)
+        masterOutputProcessor->setMasterVolume(volume);
+}
+
+void AudioRoutingGraph::setMasterPan(float pan)
+{
+    // Update Master Output Processor Pan
+    if (masterOutputProcessor)
+        masterOutputProcessor->setMasterPan(pan);
+}
+
+void AudioRoutingGraph::setMasterMute(bool muted)
+{
+    // Update Master Output Processor Mute
+    if (masterOutputProcessor)
+        masterOutputProcessor->setMasterMute(muted);
+}
+
+// Level-Update für UI
+void AudioRoutingGraph::notifyLevelUpdate(float leftLevel, float rightLevel)
+{
+    // Aufrufen der UI-Callback
+    if (levelUpdateCallback)
+        levelUpdateCallback(leftLevel, rightLevel);
+}
+
+// Loudness-Update für UI
+void AudioRoutingGraph::notifyLoudnessUpdate(float loudness)
+{
+    // Aufrufen der UI-Callback
+    if (loudnessUpdateCallback)
+        loudnessUpdateCallback(loudness);
+}

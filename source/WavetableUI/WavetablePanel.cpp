@@ -128,3 +128,244 @@ void WavetablePanel::updateSynthBounds()
         }
     }
 }
+
+//==============================================================================
+// SynthMode Integration
+//==============================================================================
+
+void WavetablePanel::setSynthMode(SynthMode mode)
+{
+    if (currentMode == mode)
+        return;
+
+    currentMode = mode;
+
+    // Mode-spezifische Flags setzen
+    switch (mode)
+    {
+        case SynthMode::Perform:
+            largeDisplayMode = true;
+            fullEditorMode = false;
+            minimizedMode = false;
+            setDisplayMode(DisplayMode::Large);
+            break;
+
+        case SynthMode::Design:
+            largeDisplayMode = false;
+            fullEditorMode = true;
+            minimizedMode = false;
+            setDisplayMode(DisplayMode::Standard);
+            break;
+
+        case SynthMode::Patch:
+            largeDisplayMode = false;
+            fullEditorMode = false;
+            minimizedMode = true;
+            setDisplayMode(DisplayMode::Compact);
+            break;
+    }
+
+    // Layout aktualisieren
+    updateSynthModeLayout();
+    resized();
+}
+
+//==============================================================================
+// SynthMode-spezifische Features
+//==============================================================================
+
+void WavetablePanel::setLargeDisplayMode(bool enabled)
+{
+    largeDisplayMode = enabled;
+
+    if (enabled)
+        setDisplayMode(DisplayMode::Large);
+    else
+        setDisplayMode(DisplayMode::Standard);
+
+    updateSynthModeLayout();
+}
+
+void WavetablePanel::setFullEditorMode(bool enabled)
+{
+    fullEditorMode = enabled;
+
+    // Alle Editor-Sections zeigen/verstecken
+    setWavetableEditorVisible(enabled);
+    setEnvelopeEditorVisible(enabled);
+    setFilterSectionVisible(enabled);
+
+    updateSynthModeLayout();
+}
+
+void WavetablePanel::setMinimizedMode(bool enabled)
+{
+    minimizedMode = enabled;
+
+    if (enabled)
+        setDisplayMode(DisplayMode::Compact);
+    else
+        setDisplayMode(DisplayMode::Standard);
+
+    updateSynthModeLayout();
+}
+
+//==============================================================================
+// Perform Mode Features
+//==============================================================================
+
+void WavetablePanel::setQuickOscillator(const QuickOscillator& osc)
+{
+    quickOscillator = osc;
+
+    // SynthEditor aktualisieren (TODO: Implementieren)
+    if (synthEditor && sharedParams)
+    {
+        // Oscillator-Parameter setzen
+        // ...
+    }
+
+    // Callback aufrufen
+    if (quickOscillatorCallback)
+        quickOscillatorCallback(osc);
+}
+
+//==============================================================================
+// Design Mode Features
+//==============================================================================
+
+void WavetablePanel::setWavetableEditorVisible(bool show)
+{
+    wavetableEditorVisible = show;
+
+    // TODO: WavetableEditor in SynthEditor zeigen/verstecken
+    if (synthEditor)
+    {
+        // synthEditor->setWavetableEditorVisible(show);
+    }
+}
+
+void WavetablePanel::setEnvelopeEditorVisible(bool show)
+{
+    envelopeEditorVisible = show;
+
+    // TODO: EnvelopeEditor in SynthEditor zeigen/verstecken
+    if (synthEditor)
+    {
+        // synthEditor->setEnvelopeEditorVisible(show);
+    }
+}
+
+void WavetablePanel::setFilterSectionVisible(bool show)
+{
+    filterSectionVisible = show;
+
+    // TODO: FilterSection in SynthEditor zeigen/verstecken
+    if (synthEditor)
+    {
+        // synthEditor->setFilterSectionVisible(show);
+    }
+}
+
+//==============================================================================
+// Display Customization
+//==============================================================================
+
+void WavetablePanel::setDisplayMode(DisplayMode mode)
+{
+    displayMode = mode;
+
+    // Display-Mode an SynthEditor weitergeben
+    if (synthEditor)
+    {
+        // TODO: SynthEditor Display-Mode setzen
+        // synthEditor->setDisplayMode(mode);
+    }
+
+    repaint();
+}
+
+//==============================================================================
+// Layout Updates
+//==============================================================================
+
+void WavetablePanel::updateSynthModeLayout()
+{
+    if (!synthEditor)
+        return;
+
+    // Layout basierend auf Mode aktualisieren
+    switch (currentMode)
+    {
+        case SynthMode::Perform:
+            // Perform Mode: Großes Display zentriert
+            // Quick-Controls werden von SynthWorkspacePanel verwaltet
+            break;
+
+        case SynthMode::Design:
+            // Design Mode: Vollständiger Editor-Access
+            // Alle Controls und Editors sichtbar
+            break;
+
+        case SynthMode::Patch:
+            // Patch Mode: Minimiert
+            // Nur Wavetable-Preview sichtbar
+            break;
+    }
+}
+
+//==============================================================================
+// Painting
+//==============================================================================
+
+void WavetablePanel::paint(juce::Graphics& g)
+{
+    auto& theme = ThemeManager::getInstance();
+
+    // Background
+    g.fillAll(theme.getPanelBackgroundColor());
+
+    // Border
+    g.setColour(theme.getAccentColor().withAlpha(0.3f));
+    g.drawRect(getLocalBounds(), 1);
+
+    // Mode-Indicator (kleiner Badge oben rechts)
+    juce::String modeText;
+    juce::Colour modeColor;
+
+    switch (currentMode)
+    {
+        case SynthMode::Perform:
+            modeText = "PERFORM";
+            modeColor = juce::Colours::green;
+            break;
+
+        case SynthMode::Design:
+            modeText = "DESIGN";
+            modeColor = juce::Colours::orange;
+            break;
+
+        case SynthMode::Patch:
+            modeText = "PATCH";
+            modeColor = juce::Colours::purple;
+            break;
+    }
+
+    // Badge zeichnen
+    if (showLabels && !minimizedMode)
+    {
+        int badgeWidth = 70;
+        int badgeHeight = 20;
+        int badgeX = getWidth() - badgeWidth - 10;
+        int badgeY = 10;
+
+        g.setColour(modeColor);
+        g.fillRoundedRectangle(juce::Rectangle<float>(badgeX, badgeY, badgeWidth, badgeHeight), 5.0f);
+
+        g.setColour(juce::Colours::white);
+        g.setFont(juce::Font(10.0f, juce::Font::bold));
+        g.drawText(modeText, badgeX, badgeY, badgeWidth, badgeHeight, juce::Justification::centred);
+    }
+
+    // TODO: Mode change animation (requires Timer support)
+}

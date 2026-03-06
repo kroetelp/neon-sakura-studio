@@ -29,7 +29,6 @@ class PluginLoadingCoordinator;
 class TrackManager;
 class SampleManager;
 class PlaybackController;
-class PanelManager;
 class DockingManager;
 class AudioEngine;
 class PatternGenerator;
@@ -44,6 +43,7 @@ class PluginInstance;
 class PluginLoadingCoordinator;
 // class PluginSandboxManager;  // TODO: Phase 6.2 - Disabled for now
 class CPUProfiler;
+class MainComponentExtension;
 
 /**
  * MainComponent - Das Hauptfenster der DAW (Single-Window Workspace)
@@ -110,7 +110,6 @@ private:
     std::unique_ptr<TrackManager> trackManager;
     std::unique_ptr<SampleManager> sampleManager;
     std::unique_ptr<PlaybackController> playbackController;
-    std::unique_ptr<PanelManager> panelManager;
     std::unique_ptr<DockingManager> dockingManager;
     std::unique_ptr<AudioEngine> audioEngine;
     std::unique_ptr<PatternGenerator> patternGenerator;
@@ -136,16 +135,32 @@ private:
     std::vector<LoadedPlugin> loadedPlugins;
 
     // ========================================================================
-    // STRETCHABLE LAYOUT (für vertikales Resizing)
+    // MAIN COMPONENT EXTENSION (Floating Workspace Layout)
     // ========================================================================
-    juce::StretchableLayoutManager stretchableManager;
-    std::unique_ptr<juce::StretchableLayoutResizerBar> verticalResizerBar;
+    std::unique_ptr<MainComponentExtension> mainComponentExtension;
 
-    // Layout-Item-IDs für StretchableLayoutManager
-    static constexpr int synthLayoutId = 1;
-    static constexpr int resizerLayoutId = 2;
-    static constexpr int bottomTabsLayoutId = 3;
-    static constexpr int timelineLayoutId = 4;
+    // ========================================================================
+    // STRETCHABLE LAYOUT SYSTEM (Flexible, DAW-like Layout)
+    // ========================================================================
+    // Haupt-Layout Manager (vertikal: TopBar + MainArea)
+    juce::StretchableLayoutManager mainLayoutManager;
+    std::unique_ptr<juce::StretchableLayoutResizerBar> mainResizerBar;
+
+    // MainArea Layout Manager (horizontal: PluginBrowser + Workspace)
+    juce::StretchableLayoutManager workspaceLayoutManager;
+    std::unique_ptr<juce::StretchableLayoutResizerBar> workspaceResizerBar;
+
+    // Workspace Layout Manager (vertikal: MainContent + BottomTabs)
+    juce::StretchableLayoutManager contentLayoutManager;
+    std::unique_ptr<juce::StretchableLayoutResizerBar> contentResizerBar;
+
+    // Layout-Item-IDs
+    static constexpr int topBarLayoutId = 1;
+    static constexpr int mainAreaLayoutId = 2;
+    static constexpr int pluginBrowserLayoutId = 1;
+    static constexpr int workspaceLayoutId = 2;
+    static constexpr int mainContentLayoutId = 1;
+    static constexpr int bottomTabsLayoutId = 2;
 
     // ========================================================================
     // TAB COMPONENT (Timeline + Step Sequencer)
@@ -164,45 +179,15 @@ private:
     std::unique_ptr<TrackToolsBar> trackToolsBar;
     std::unique_ptr<PanelTogglesBar> panelTogglesBar;
 
-    // Additional Top Bar Controls (kept for compatibility)
-    juce::TextButton clearAllButton;
-    juce::TextButton audioSettingsButton;
-    juce::TextButton wootingSettingsButton;
-
-    // Legacy Controls (will be phased out)
-    juce::TextButton playButton;
-    juce::TextButton stopButton;
-    juce::TextButton setFolderButton;
-    juce::TextButton rhythmExplorerButton;
-    juce::TextButton melodyWorkstationButton;
-    juce::TextButton wavetableSynthButton;
-    juce::TextButton timelineButton;
-    juce::TextButton stepSequencerButton;
-    juce::TextButton pluginBrowserButton;
-    juce::Slider bpmSlider;
-    juce::Label bpmLabel;
-    juce::Slider masterVolumeSlider;
-    juce::Label masterVolumeLabel;
-    juce::ComboBox loopLengthComboBox;
-    juce::Label loopLengthLabel;
-    juce::Label folderLabel;
-    juce::ComboBox genreComboBox;
-    juce::ComboBox drumTargetTrackCombo;
-    juce::Label drumTargetLabel;
-    juce::TextButton generateButton;
-    juce::Slider swingSlider;
-    juce::Label swingLabel;
-    juce::Slider reverbSlider;
-    juce::Label reverbLabel;
-
     // ========================================================================
     // LAYOUT CONSTANTS
     // ========================================================================
     static constexpr int topBarHeight = 90;
     static constexpr int resizerBarHeight = 6;
-    static constexpr int defaultSynthHeight = 350;
-    static constexpr int defaultBottomTabsHeight = 400;
     static constexpr int minPanelHeight = 100;
+    static constexpr int minSidebarWidth = 200;
+    static constexpr int defaultSidebarWidth = 280;  // Für Plugin Browser
+    static constexpr int defaultBottomHeight = 300;
     static constexpr int tabBarHeight = 32;
 
     // ========================================================================
@@ -223,17 +208,15 @@ private:
     void initializeDockingPanels();
     void initializeBottomTabs();  // NEU: Tab-Component initialisieren
     void connectTrackCallbacks();
-    void connectUICallbacks();
 
     void updatePlayhead();
-    void togglePlay();
-    void stopPlayback();
     void openFolderChooser();
     void showAudioSettingsDialog();
 
     // === Layout Helper ===
     void layoutTopBar(juce::Rectangle<int>& area);
     void layoutTracks(juce::Rectangle<int> area);
+    void initializeLayoutManagers();
 
     // === Tab Helper ===
     void switchToTimelineTab();

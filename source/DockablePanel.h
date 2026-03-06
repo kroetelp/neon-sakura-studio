@@ -25,10 +25,13 @@ class DockingManager;
 enum class PanelType
 {
     Timeline,
-    WavetableSynth,
+    WavetableSynth,      // Einzelnes Wavetable-Panel (alt)
+    SynthWorkspace,       // NEU: Container-Panel mit Tabs
     RhythmExplorer,
     MelodyPanel,
     Mixer,
+    RoutingMatrix,
+    MasterBus,
     StepSequencer,
     TrackEditor,
     Unknown

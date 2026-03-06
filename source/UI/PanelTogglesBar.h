@@ -48,6 +48,7 @@ private:
     std::unique_ptr<juce::TextButton> melodyButton;
     std::unique_ptr<juce::TextButton> wavetableButton;
     std::unique_ptr<juce::TextButton> timelineButton;
+    std::unique_ptr<juce::TextButton> stepSequencerButton;
     std::unique_ptr<juce::TextButton> pluginBrowserButton;
 
     // DockingManager Reference (non-owning)
