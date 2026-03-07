@@ -8,6 +8,8 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 #include <juce_dsp/juce_dsp.h>
 #include <vector>
+#include <unordered_map>
+#include <functional>
 #include <random>
 #include <chrono>
 #include <atomic>
@@ -18,7 +20,6 @@
 #include "UI/TransportBar.h"
 #include "UI/GlobalControlsBar.h"
 #include "UI/TrackToolsBar.h"
-#include "UI/PanelTogglesBar.h"
 #include "WootingManager.h"
 #include "AudioRouting/AudioRoutingGraph.h"  // For LoadedPlugin struct
 
@@ -29,9 +30,9 @@ class PluginLoadingCoordinator;
 class TrackManager;
 class SampleManager;
 class PlaybackController;
-class DockingManager;
 class AudioEngine;
 class PatternGenerator;
+class WavetablePanel;
 class RhythmExplorerPanel;
 class MelodyPanelPanel;
 class WavetableParams;
@@ -43,7 +44,6 @@ class PluginInstance;
 class PluginLoadingCoordinator;
 // class PluginSandboxManager;  // TODO: Phase 6.2 - Disabled for now
 class CPUProfiler;
-class MainComponentExtension;
 
 /**
  * MainComponent - Das Hauptfenster der DAW (Single-Window Workspace)
@@ -67,7 +67,8 @@ class MainComponentExtension;
  * └─────────────────────────────────────────────────────────┘
  */
 class MainComponent : public juce::AudioAppComponent,
-                      public juce::Timer
+                      public juce::Timer,
+                      public juce::MenuBarModel
 {
 public:
     MainComponent();
@@ -79,8 +80,14 @@ public:
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    bool keyPressed(const juce::KeyPress& key) override;
 
     void timerCallback() override;
+
+    // === MenuBarModel Interface ===
+    juce::StringArray getMenuBarNames() override;
+    juce::PopupMenu getMenuForIndex(int topLevelMenuIndex, const juce::String& menuName) override;
+    void menuItemSelected(int menuItemID, int topLevelMenuIndex) override;
 
     // === DockingManager Integration ===
     void triggerLayoutUpdate() { resized(); }
@@ -110,8 +117,7 @@ private:
     std::unique_ptr<TrackManager> trackManager;
     std::unique_ptr<SampleManager> sampleManager;
     std::unique_ptr<PlaybackController> playbackController;
-    std::unique_ptr<DockingManager> dockingManager;
-    std::unique_ptr<AudioEngine> audioEngine;
+        std::unique_ptr<AudioEngine> audioEngine;
     std::unique_ptr<PatternGenerator> patternGenerator;
     std::unique_ptr<WootingManager> wootingManager;
 
@@ -135,37 +141,23 @@ private:
     std::vector<LoadedPlugin> loadedPlugins;
 
     // ========================================================================
+    // FLOATING WINDOW MANAGEMENT
+    // ========================================================================
+    std::unordered_map<int, std::unique_ptr<juce::DocumentWindow>> floatingWindows;
+
+    // Panel storage for floating windows
+    std::unique_ptr<WavetablePanel> wavetablePanelForWindow;
+    std::unique_ptr<RhythmExplorerPanel> rhythmExplorerPanelForWindow;
+    std::unique_ptr<MelodyPanelPanel> melodyPanelPanelForWindow;
+
+    // ========================================================================
     // MAIN COMPONENT EXTENSION (Floating Workspace Layout)
     // ========================================================================
-    std::unique_ptr<MainComponentExtension> mainComponentExtension;
-
-    // ========================================================================
-    // STRETCHABLE LAYOUT SYSTEM (Flexible, DAW-like Layout)
-    // ========================================================================
-    // Haupt-Layout Manager (vertikal: TopBar + MainArea)
-    juce::StretchableLayoutManager mainLayoutManager;
-    std::unique_ptr<juce::StretchableLayoutResizerBar> mainResizerBar;
-
-    // MainArea Layout Manager (horizontal: PluginBrowser + Workspace)
-    juce::StretchableLayoutManager workspaceLayoutManager;
-    std::unique_ptr<juce::StretchableLayoutResizerBar> workspaceResizerBar;
-
-    // Workspace Layout Manager (vertikal: MainContent + BottomTabs)
-    juce::StretchableLayoutManager contentLayoutManager;
-    std::unique_ptr<juce::StretchableLayoutResizerBar> contentResizerBar;
-
-    // Layout-Item-IDs
-    static constexpr int topBarLayoutId = 1;
-    static constexpr int mainAreaLayoutId = 2;
-    static constexpr int pluginBrowserLayoutId = 1;
-    static constexpr int workspaceLayoutId = 2;
-    static constexpr int mainContentLayoutId = 1;
-    static constexpr int bottomTabsLayoutId = 2;
-
+    
     // ========================================================================
     // TAB COMPONENT (Timeline + Step Sequencer)
     // ========================================================================
-    std::unique_ptr<juce::TabbedComponent> bottomTabs;
+    std::unique_ptr<juce::TabbedComponent> workspaceTabs;
 
     // Tab-Indizes
     static constexpr int timelineTabIndex = 0;
@@ -177,18 +169,21 @@ private:
     std::unique_ptr<TransportBar> transportBar;
     std::unique_ptr<GlobalControlsBar> globalControlsBar;
     std::unique_ptr<TrackToolsBar> trackToolsBar;
-    std::unique_ptr<PanelTogglesBar> panelTogglesBar;
+    std::unique_ptr<juce::MenuBarComponent> menuBar;
+
+    // ========================================================================
+    // MENU BAR IDs
+    // ========================================================================
+    static constexpr int menuWavetableSynth = 1001;
+    static constexpr int menuRhythmExplorer = 1002;
+    static constexpr int menuMelodyPanel = 1003;
+    static constexpr int menuPluginBrowser = 1004;
 
     // ========================================================================
     // LAYOUT CONSTANTS
     // ========================================================================
-    static constexpr int topBarHeight = 90;
-    static constexpr int resizerBarHeight = 6;
-    static constexpr int minPanelHeight = 100;
-    static constexpr int minSidebarWidth = 200;
-    static constexpr int defaultSidebarWidth = 280;  // Für Plugin Browser
-    static constexpr int defaultBottomHeight = 300;
-    static constexpr int tabBarHeight = 32;
+    static constexpr int menuBarHeight = 24;
+    static constexpr int controlsRowHeight = 45;
 
     // ========================================================================
     // INTERNAL STATE
@@ -205,29 +200,23 @@ private:
     // ========================================================================
     void initializeManagers();
     void initializeUI();
-    void initializeDockingPanels();
-    void initializeBottomTabs();  // NEU: Tab-Component initialisieren
     void connectTrackCallbacks();
 
     void updatePlayhead();
     void openFolderChooser();
     void showAudioSettingsDialog();
 
-    // === Layout Helper ===
-    void layoutTopBar(juce::Rectangle<int>& area);
-    void layoutTracks(juce::Rectangle<int> area);
-    void initializeLayoutManagers();
-
-    // === Tab Helper ===
-    void switchToTimelineTab();
-    void switchToStepSequencerTab();
-
     // === VST Hosting Helper ===
     void initializeVSTHosting();
     void connectVSTCallbacks();
-    void togglePluginBrowser();
     void loadPluginToSelectedTrack(std::unique_ptr<PluginInstance> instance);
-    juce::Rectangle<int> layoutPluginBrowser(juce::Rectangle<int>& mainArea);
+
+    // === Floating Window Management ===
+    void openWavetableSynthWindow();
+    void openRhythmExplorerWindow();
+    void openMelodyPanelWindow();
+    void openPluginBrowserWindow();
+    void closeFloatingWindow(int windowID);
 
     // === Color Helpers (delegated to ThemeManager) ===
     juce::Colour getNeonPink() const { return ThemeManager::getInstance().getAccentColor(); }
